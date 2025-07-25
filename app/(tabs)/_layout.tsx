@@ -1,8 +1,8 @@
 import { Tabs } from 'expo-router';
+import { LayoutDashboard, ReceiptText, UserCircle, UserPlus2, Users } from 'lucide-react-native';
 import React from 'react';
-import { LayoutDashboard, ReceiptText, Users, UserPlus2, UserCircle } from 'lucide-react-native';
-import { useThemeMode } from '../../contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemeMode } from '../../contexts/ThemeContext';
 
 export default function TabLayout() {
   const { paperTheme } = useThemeMode();

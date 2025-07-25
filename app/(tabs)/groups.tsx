@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, ScrollView, Alert, RefreshControl, TouchableOpacity } from 'react-native';
-import { Surface, Text, Card, List, ActivityIndicator, useTheme, FAB, Divider, Avatar } from 'react-native-paper';
-import GroupButton from '../../components/ui/GroupButton';
-import { useAuth } from '../../hooks/useAuth';
-import { getGroupsForUser, getGroupInvitationsForUser, acceptGroupInvitation } from '../../firebase/firestore';
 import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, RefreshControl, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Avatar, Card, Divider, Surface, Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import GroupButton from '../../components/ui/GroupButton';
+import { acceptGroupInvitation, getGroupInvitationsForUser, getGroupsForUser } from '../../firebase/firestore';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function GroupsScreen() {
   const { authUser, userProfile, loading } = useAuth();

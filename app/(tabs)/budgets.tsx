@@ -1,20 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { View, ScrollView, Alert, Image, SafeAreaView } from 'react-native';
-import { Surface, Text, Button, Card, TextInput, Dialog, Portal, ProgressBar, useTheme, IconButton, ActivityIndicator } from 'react-native-paper';
-import { getBudgetsByUser, addBudget, updateBudget, deleteBudget, getExpensesByUser, Budget, BudgetPeriod } from '../../firebase/firestore';
-import { useAuth } from '../../hooks/useAuth';
-import RNPickerSelect from 'react-native-picker-select';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { SUPPORTED_CURRENCIES } from '../../constants/types';
-import { getGlobalCategories } from '../../firebase/firestore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Circle, AlertCircle, Wand2 } from 'lucide-react-native';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { auth } from '../../firebase/config';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { storage } from '../../firebase/config';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { AlertCircle, Wand2 } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Image, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Button, Card, Dialog, IconButton, Portal, ProgressBar, Surface, Text, TextInput, useTheme } from 'react-native-paper';
+import RNPickerSelect from 'react-native-picker-select';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SUPPORTED_CURRENCIES } from '../../constants/types';
+import { auth, storage } from '../../firebase/config';
+import { addBudget, Budget, BudgetPeriod, deleteBudget, getBudgetsByUser, getExpensesByUser, getGlobalCategories, updateBudget } from '../../firebase/firestore';
+import { useAuth } from '../../hooks/useAuth';
 
 const PERIOD_LABELS: Record<BudgetPeriod, string> = {
   weekly: 'Weekly',

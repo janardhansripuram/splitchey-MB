@@ -1,8 +1,8 @@
-import { collection, query, where, orderBy, getDocs, doc, getDoc, addDoc, Timestamp, runTransaction, updateDoc, increment, onSnapshot, limit, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL, uploadBytes } from 'firebase/storage';
-import { updateProfile } from 'firebase/auth';
-import { db, storage, auth } from './config';
 import * as Notifications from 'expo-notifications';
+import { updateProfile } from 'firebase/auth';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query, runTransaction, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { auth, db, storage } from './config';
 
 // Basic types (expand as needed)
 export type Group = {

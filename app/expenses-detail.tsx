@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { View, Alert } from 'react-native';
-import { Surface, Text, Button, useTheme, Card } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Alert } from 'react-native';
+import { Button, Card, Surface, Text, useTheme } from 'react-native-paper';
 // import { getExpenseById, deleteExpense } from '../firebase/firestore'; // TODO: Implement
 
 export default function ExpenseDetailScreen() {

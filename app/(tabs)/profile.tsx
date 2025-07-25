@@ -1,18 +1,25 @@
-import React, { useState, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, Platform, TouchableOpacity, Linking, RefreshControl } from 'react-native';
-import { Surface, Text, Card, Button, Avatar, useTheme, Dialog, Portal, TextInput, Snackbar, Switch, ActivityIndicator } from 'react-native-paper';
-import { useAuth } from '../../hooks/useAuth';
-import * as ImagePicker from 'expo-image-picker';
-import { updateProfile, signOut, updatePassword, updateEmail, reauthenticateWithCredential, EmailAuthProvider, deleteUser } from 'firebase/auth';
-import { auth } from '../../firebase/config';
-import { getUserProfile, createUserProfile, updateUserProfilePhoto, upgradeUserToPremium, cancelUserSubscription } from '../../firebase/firestore';
-import * as Notifications from 'expo-notifications';
-import { Modal, List } from 'react-native-paper';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { db } from '../../firebase/config';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { useThemeMode } from '../../contexts/ThemeContext';
 import { format } from 'date-fns';
+import * as ImagePicker from 'expo-image-picker';
+import * as Notifications from 'expo-notifications';
+import { EmailAuthProvider, deleteUser, reauthenticateWithCredential, signOut, updateEmail, updatePassword, updateProfile } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
+import { Bell, Lock, LogOut, Mail, Palette, Settings, Shield, Star, Trash2, User } from 'lucide-react-native';
+import React, { useCallback, useState } from 'react';
+import { Dimensions, Linking, RefreshControl, ScrollView, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Avatar, Dialog, Divider, List, Modal, Portal, Snackbar, Surface, Switch, Text, useTheme } from 'react-native-paper';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ModernButton } from '../../components/ui/ModernButton';
+import { ModernCard } from '../../components/ui/ModernCard';
+import { ModernInput } from '../../components/ui/ModernInput';
+import { DesignSystem } from '../../constants/DesignSystem';
+import { useThemeMode } from '../../contexts/ThemeContext';
+import { auth, db } from '../../firebase/config';
+import { cancelUserSubscription, updateUserProfilePhoto, upgradeUserToPremium } from '../../firebase/firestore';
+import { useAuth } from '../../hooks/useAuth';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SUPPORTED_CURRENCIES = [
   { code: 'USD', name: 'US Dollar' },
@@ -60,6 +67,7 @@ export default function ProfileScreen() {
   const [upgrading, setUpgrading] = useState(false);
   const [upgradePeriod, setUpgradePeriod] = useState<'monthly' | 'yearly' | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -271,332 +279,563 @@ export default function ProfileScreen() {
     return <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" /></Surface>;
   }
 
-  const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: colors.background },
-    headerSection: { 
-      backgroundColor: colors.primary, 
-      height: 200, 
-      position: 'relative',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    headerWave: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: 50,
-      backgroundColor: colors.background,
-      borderTopLeftRadius: 25,
-      borderTopRightRadius: 25,
-    },
-    profileSection: {
-      marginTop: -106, // Half of avatar height (112/2)
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingBottom: 30,
-    },
-    avatarContainer: {
-      position: 'relative',
-      marginBottom: 16,
-      zIndex: 10,
-    },
-    avatar: { 
-      backgroundColor: colors.primary, 
-      width: 112, 
-      height: 112,
-      borderRadius: 56,
-      borderWidth: 4,
-      borderColor: colors.background,
-    },
-    cameraButton: {
-      position: 'absolute',
-      bottom: 4,
-      right: 4,
-      backgroundColor: colors.background,
-      borderRadius: 16,
-      width: 32,
-      height: 32,
-      justifyContent: 'center',
-      alignItems: 'center',
-      elevation: 4,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
-    },
-    profileName: { 
-      fontWeight: 'bold', 
-      fontSize: 24, 
-      color: colors.onBackground,
-      marginBottom: 4,
-    },
-    profileEmail: { 
-      color: colors.onSurfaceVariant, 
-      fontSize: 16,
-    },
-    card: { borderRadius: 18, marginBottom: 18, backgroundColor: dark ? colors.elevation.level2 : '#fafbfc', padding: 0, elevation: 4 },
-    cardContent: { padding: 20 },
-    avatarRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    sectionTitle: { fontWeight: 'bold', fontSize: 18, color: colors.onBackground, marginBottom: 6 },
-    sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-    label: { color: colors.onSurfaceVariant, fontSize: 15 },
-    value: { fontWeight: 'bold', fontSize: 15, color: colors.onBackground },
-    fullButton: { borderRadius: 10, marginTop: 10, height: 48, justifyContent: 'center', backgroundColor: colors.primary },
-    fullButtonLabel: { fontWeight: 'bold', fontSize: 17, color: colors.onPrimary },
-    cancelButton: { borderRadius: 10, marginTop: 10, height: 48, justifyContent: 'center', borderColor: colors.error },
-    cancelButtonLabel: { fontWeight: 'bold', fontSize: 17, color: colors.error },
-    themeSelector: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 16, paddingHorizontal: 8 },
-    themeOption: { alignItems: 'center', padding: 16, borderRadius: 12, minWidth: 80, backgroundColor: colors.elevation?.level1 || colors.surface },
-    themeOptionActive: { backgroundColor: colors.primaryContainer, borderWidth: 2, borderColor: colors.primary },
-    themeLabel: { marginTop: 8, fontSize: 12, fontWeight: '500', color: colors.onSurfaceVariant },
-    themeLabelActive: { color: colors.primary, fontWeight: 'bold' },
-    subscriptionCard: {
-      backgroundColor: colors.primaryContainer,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    subscriptionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 12,
-    },
-    subscriptionTitle: {
-      fontWeight: 'bold',
-      fontSize: 18,
-      color: colors.onBackground,
-      marginLeft: 8,
-    },
-    subscriptionDetails: {
-      marginBottom: 16,
-    },
-    subscriptionPlan: {
-      fontWeight: 'bold',
-      fontSize: 16,
-      color: colors.onBackground,
-      marginBottom: 4,
-    },
-    subscriptionDate: {
-      color: colors.onSurfaceVariant,
-      fontSize: 14,
-    },
-    subscriptionFeatures: {
-      backgroundColor: colors.elevation?.level1 || colors.surface,
-      padding: 16,
-      borderRadius: 8,
-      marginTop: 12,
-    },
-    featureTitle: {
-      fontWeight: 'bold',
-      fontSize: 14,
-      color: colors.onBackground,
-      marginBottom: 8,
-    },
-    featureList: {
-      color: colors.onSurfaceVariant,
-      fontSize: 13,
-      lineHeight: 18,
-    },
-    dialogContent: {
-      paddingVertical: 16,
-    },
-    dialogActions: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 16,
-    },
-  });
-
   return (
-    <ScrollView style={styles.container}>
+    <Surface style={{ flex: 1, backgroundColor: DesignSystem.colors.neutral[50] }}>
       {/* Header Section */}
-      <View style={styles.headerSection}>
-        <View style={styles.headerWave} />
+      <View style={{
+        background: `linear-gradient(135deg, ${DesignSystem.colors.primary[500]} 0%, ${DesignSystem.colors.primary[600]} 100%)`,
+        backgroundColor: DesignSystem.colors.primary[500],
+        paddingTop: insets.top + 20,
+        paddingBottom: 80,
+        paddingHorizontal: 20,
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32,
+        ...DesignSystem.shadows.lg,
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700' }}>Profile</Text>
+          <TouchableOpacity onPress={() => setEditProfileOpen(true)} style={{
+            backgroundColor: 'rgba(255,255,255,0.2)',
+            borderRadius: 20,
+            padding: 8,
+          }}>
+            <Settings size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
       
       {/* Profile Section */}
-      <View style={styles.profileSection}>
-        <View style={styles.avatarContainer}>
+      <View style={{ 
+        marginTop: -60, 
+        alignItems: 'center', 
+        paddingHorizontal: 20, 
+        paddingBottom: 30,
+        zIndex: 10,
+      }}>
+        <Animated.View entering={FadeInUp.delay(200)} style={{ position: 'relative', marginBottom: 16 }}>
           <Avatar.Image 
             size={112} 
             source={{ uri: userProfile.photoURL }} 
-            style={styles.avatar}
+            style={{
+              backgroundColor: DesignSystem.colors.primary[500],
+              borderWidth: 4,
+              borderColor: '#fff',
+              ...DesignSystem.shadows.lg,
+            }}
           />
           <TouchableOpacity 
-            style={styles.cameraButton} 
+            style={{
+              position: 'absolute',
+              bottom: 4,
+              right: 4,
+              backgroundColor: '#fff',
+              borderRadius: 20,
+              width: 40,
+              height: 40,
+              justifyContent: 'center',
+              alignItems: 'center',
+              ...DesignSystem.shadows.md,
+            }}
             onPress={handlePickAvatar}
             disabled={avatarLoading}
           >
             {avatarLoading ? (
-              <ActivityIndicator size={16} color={colors.primary} />
+              <ActivityIndicator size={20} color={DesignSystem.colors.primary[500]} />
             ) : (
-              <MaterialCommunityIcons name="camera" size={16} color={colors.primary} />
+              <MaterialCommunityIcons name="camera" size={20} color={DesignSystem.colors.primary[500]} />
             )}
           </TouchableOpacity>
-        </View>
-        <Text style={styles.profileName}>{userProfile.displayName}</Text>
-        <Text style={styles.profileEmail}>{userProfile.email}</Text>
+        </Animated.View>
+        
+        <Animated.View entering={FadeInUp.delay(400)} style={{ alignItems: 'center' }}>
+          <Text style={{ 
+            fontWeight: '700', 
+            fontSize: 24, 
+            color: DesignSystem.colors.neutral[900],
+            marginBottom: 4,
+          }}>
+            {userProfile.displayName}
+          </Text>
+          <Text style={{ 
+            color: DesignSystem.colors.neutral[600], 
+            fontSize: 16,
+          }}>
+            {userProfile.email}
+          </Text>
+        </Animated.View>
       </View>
 
-      <View style={{ padding: 20 }}>
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Subscription Card */}
-        <Card style={[styles.card, userProfile.subscription?.plan === 'premium' && styles.subscriptionCard]}>
-          <View style={styles.cardContent}>
-            <View style={styles.subscriptionHeader}>
-              <MaterialCommunityIcons name="star" size={24} color="#fbbf24" />
-              <Text style={styles.subscriptionTitle}>Subscription</Text>
+        <Animated.View entering={FadeInDown.delay(200)}>
+          <ModernCard 
+            variant={userProfile.subscription?.plan === 'premium' ? 'elevated' : 'default'}
+            style={{
+              marginBottom: 20,
+              backgroundColor: userProfile.subscription?.plan === 'premium' 
+                ? DesignSystem.colors.primary[50] 
+                : '#fff',
+              borderWidth: userProfile.subscription?.plan === 'premium' ? 2 : 0,
+              borderColor: userProfile.subscription?.plan === 'premium' 
+                ? DesignSystem.colors.primary[200] 
+                : 'transparent',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: DesignSystem.colors.warning[100],
+                borderRadius: 12,
+                padding: 8,
+                marginRight: 12,
+              }}>
+                <Star size={24} color={DesignSystem.colors.warning[600]} />
+              </View>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 20, 
+                color: DesignSystem.colors.neutral[900] 
+              }}>
+                Subscription
+              </Text>
             </View>
-            <View style={styles.subscriptionDetails}>
-              <Text style={styles.label}>Your Plan</Text>
-              <Text style={styles.subscriptionPlan}>
+            
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ 
+                color: DesignSystem.colors.neutral[600], 
+                fontSize: 14, 
+                marginBottom: 4 
+              }}>
+                Your Plan
+              </Text>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 18, 
+                color: DesignSystem.colors.neutral[900],
+                marginBottom: 4,
+              }}>
                 {userProfile.subscription?.planId?.replace('_', ' ') || 'Free'}
               </Text>
               {userProfile.subscription?.planId !== 'free' && userProfile.subscription?.currentPeriodEnd && (
-                <Text style={styles.subscriptionDate}>
+                <Text style={{ 
+                  color: DesignSystem.colors.neutral[600], 
+                  fontSize: 14 
+                }}>
                   Renews on {format(new Date(userProfile.subscription.currentPeriodEnd), 'MMM dd, yyyy')}
                 </Text>
               )}
             </View>
             
             {userProfile.subscription?.plan === 'free' ? (
-              <Button 
-                mode="contained" 
-                style={styles.fullButton} 
-                labelStyle={styles.fullButtonLabel}
+              <ModernButton
+                title="Upgrade to Premium"
                 onPress={() => setUpgradeDialog(true)}
-              >
-                Upgrade to Premium
-              </Button>
+                variant="primary"
+                fullWidth
+                icon={<Star size={20} color="#fff" />}
+              />
             ) : (
-              <Button 
-                mode="outlined" 
-                style={styles.fullButton} 
-                labelStyle={styles.fullButtonLabel}
+              <ModernButton
+                title="Manage Subscription"
                 onPress={() => setManageSubscriptionOpen(true)}
-              >
-                Manage Subscription
-              </Button>
+                variant="outline"
+                fullWidth
+              />
             )}
             
             {userProfile.subscription?.plan === 'free' && (
-              <View style={styles.subscriptionFeatures}>
-                <Text style={styles.featureTitle}>Upgrade to unlock:</Text>
-                <Text style={styles.featureList}>
+              <View style={{
+                backgroundColor: DesignSystem.colors.neutral[50],
+                padding: 16,
+                borderRadius: 12,
+                marginTop: 16,
+              }}>
+                <Text style={{ 
+                  fontWeight: '600', 
+                  fontSize: 14, 
+                  color: DesignSystem.colors.neutral[900],
+                  marginBottom: 8,
+                }}>
+                  Upgrade to unlock:
+                </Text>
+                <Text style={{ 
+                  color: DesignSystem.colors.neutral[700], 
+                  fontSize: 13, 
+                  lineHeight: 20,
+                }}>
                   • Unlimited Budgets & Savings Goals{'\n'}
                   • Unlimited AI-powered Receipt Scans{'\n'}
                   • Advanced Reporting & Insights
                 </Text>
               </View>
             )}
-          </View>
-        </Card>
+          </ModernCard>
+        </Animated.View>
 
         {/* Account Details Card */}
-        <Card style={styles.card}>
-          <View style={styles.cardContent}>
-            <Text style={styles.sectionTitle}>Account Details</Text>
-            <View style={styles.sectionRow}>
-              <Text style={styles.label}>Display Name</Text>
-              <Text style={styles.value}>{userProfile.displayName}</Text>
+        <Animated.View entering={FadeInDown.delay(300)}>
+          <ModernCard style={{ marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: DesignSystem.colors.primary[100],
+                borderRadius: 12,
+                padding: 8,
+                marginRight: 12,
+              }}>
+                <User size={24} color={DesignSystem.colors.primary[600]} />
+              </View>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 20, 
+                color: DesignSystem.colors.neutral[900] 
+              }}>
+                Account Details
+              </Text>
             </View>
-            <View style={styles.sectionRow}>
-              <Text style={styles.label}>Default Currency</Text>
-              <Text style={styles.value}>{userProfile.defaultCurrency}</Text>
+            
+            <View style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ color: DesignSystem.colors.neutral[600], fontSize: 14 }}>Display Name</Text>
+                <Text style={{ fontWeight: '600', fontSize: 15, color: DesignSystem.colors.neutral[900] }}>
+                  {userProfile.displayName}
+                </Text>
+              </View>
+              <Divider style={{ backgroundColor: DesignSystem.colors.neutral[200] }} />
             </View>
-            <Button mode="outlined" style={styles.fullButton} labelStyle={styles.fullButtonLabel} onPress={() => setEditProfileOpen(true)}>Edit Details</Button>
-          </View>
-        </Card>
+            
+            <View style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{ color: DesignSystem.colors.neutral[600], fontSize: 14 }}>Default Currency</Text>
+                <Text style={{ fontWeight: '600', fontSize: 15, color: DesignSystem.colors.neutral[900] }}>
+                  {userProfile.defaultCurrency}
+                </Text>
+              </View>
+              <Divider style={{ backgroundColor: DesignSystem.colors.neutral[200] }} />
+            </View>
+            
+            <ModernButton
+              title="Edit Details"
+              onPress={() => setEditProfileOpen(true)}
+              variant="outline"
+              fullWidth
+              icon={<Settings size={18} color={DesignSystem.colors.primary[600]} />}
+            />
+          </ModernCard>
+        </Animated.View>
 
         {/* Appearance Card */}
-        <Card style={styles.card}>
-          <View style={styles.cardContent}>
-            <Text style={styles.sectionTitle}>Appearance</Text>
-            <View style={styles.sectionRow}>
-              <Text style={styles.label}>Theme</Text>
-              <Switch value={theme === 'dark'} onValueChange={handleThemeToggle} />
+        <Animated.View entering={FadeInDown.delay(400)}>
+          <ModernCard style={{ marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: DesignSystem.colors.secondary[100],
+                borderRadius: 12,
+                padding: 8,
+                marginRight: 12,
+              }}>
+                <Palette size={24} color={DesignSystem.colors.secondary[600]} />
+              </View>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 20, 
+                color: DesignSystem.colors.neutral[900] 
+              }}>
+                Appearance
+              </Text>
             </View>
-            <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, marginTop: 4 }}>Current: {theme.charAt(0).toUpperCase() + theme.slice(1)}</Text>
-            <View style={styles.themeSelector}>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ color: DesignSystem.colors.neutral[600], fontSize: 15 }}>Dark Mode</Text>
+              <Switch 
+                value={theme === 'dark'} 
+                onValueChange={handleThemeToggle}
+                trackColor={{ 
+                  false: DesignSystem.colors.neutral[300], 
+                  true: DesignSystem.colors.primary[500] 
+                }}
+                thumbColor={theme === 'dark' ? '#fff' : '#fff'}
+              />
+            </View>
+            
+            <Text style={{ 
+              color: DesignSystem.colors.neutral[500], 
+              fontSize: 13, 
+              marginBottom: 16 
+            }}>
+              Current: {theme.charAt(0).toUpperCase() + theme.slice(1)}
+            </Text>
+            
+            <View style={{ 
+              flexDirection: 'row', 
+              justifyContent: 'space-around', 
+              backgroundColor: DesignSystem.colors.neutral[50],
+              borderRadius: 16,
+              padding: 8,
+            }}>
               <TouchableOpacity
-                style={[styles.themeOption, theme === 'system' && styles.themeOptionActive]}
+                style={{
+                  alignItems: 'center',
+                  padding: 12,
+                  borderRadius: 12,
+                  minWidth: 80,
+                  backgroundColor: theme === 'system' ? DesignSystem.colors.primary[100] : 'transparent',
+                }}
                 onPress={() => handleThemeModeChange('system')}
               >
                 <MaterialCommunityIcons
                   name="theme-light-dark"
                   size={24}
-                  color={theme === 'system' ? colors.primary : colors.onSurfaceVariant}
+                  color={theme === 'system' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[500]}
                 />
-                <Text style={[styles.themeLabel, theme === 'system' && styles.themeLabelActive]}>System</Text>
+                <Text style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  fontWeight: theme === 'system' ? '600' : '500',
+                  color: theme === 'system' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[600],
+                }}>
+                  System
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.themeOption, theme === 'light' && styles.themeOptionActive]}
+                style={{
+                  alignItems: 'center',
+                  padding: 12,
+                  borderRadius: 12,
+                  minWidth: 80,
+                  backgroundColor: theme === 'light' ? DesignSystem.colors.primary[100] : 'transparent',
+                }}
                 onPress={() => handleThemeModeChange('light')}
               >
                 <MaterialCommunityIcons
                   name="white-balance-sunny"
                   size={24}
-                  color={theme === 'light' ? colors.primary : colors.onSurfaceVariant}
+                  color={theme === 'light' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[500]}
                 />
-                <Text style={[styles.themeLabel, theme === 'light' && styles.themeLabelActive]}>Light</Text>
+                <Text style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  fontWeight: theme === 'light' ? '600' : '500',
+                  color: theme === 'light' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[600],
+                }}>
+                  Light
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.themeOption, theme === 'dark' && styles.themeOptionActive]}
+                style={{
+                  alignItems: 'center',
+                  padding: 12,
+                  borderRadius: 12,
+                  minWidth: 80,
+                  backgroundColor: theme === 'dark' ? DesignSystem.colors.primary[100] : 'transparent',
+                }}
                 onPress={() => handleThemeModeChange('dark')}
               >
                 <MaterialCommunityIcons
                   name="weather-night"
                   size={24}
-                  color={theme === 'dark' ? colors.primary : colors.onSurfaceVariant}
+                  color={theme === 'dark' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[500]}
                 />
-                <Text style={[styles.themeLabel, theme === 'dark' && styles.themeLabelActive]}>Dark</Text>
+                <Text style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  fontWeight: theme === 'dark' ? '600' : '500',
+                  color: theme === 'dark' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[600],
+                }}>
+                  Dark
+                </Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </Card>
+          </ModernCard>
+        </Animated.View>
+        
         {/* Notifications Card */}
-        <Card style={styles.card}>
-          <View style={styles.cardContent}>
-            <Text style={styles.sectionTitle}>Notifications</Text>
-            <View style={styles.sectionRow}>
-              <Text style={styles.label}>Push Notifications</Text>
-              <Button mode="outlined" onPress={handleEnableNotif} loading={notifLoading} disabled={notifEnabled} style={{ borderRadius: 8 }}>{notifEnabled ? 'Enabled' : 'Enable'}</Button>
+        <Animated.View entering={FadeInDown.delay(500)}>
+          <ModernCard style={{ marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: DesignSystem.colors.warning[100],
+                borderRadius: 12,
+                padding: 8,
+                marginRight: 12,
+              }}>
+                <Bell size={24} color={DesignSystem.colors.warning[600]} />
+              </View>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 20, 
+                color: DesignSystem.colors.neutral[900] 
+              }}>
+                Notifications
+              </Text>
             </View>
-            <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, marginTop: 4 }}>Status: {notifStatus.charAt(0).toUpperCase() + notifStatus.slice(1)}</Text>
-          </View>
-        </Card>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: DesignSystem.colors.neutral[700], fontSize: 15 }}>Push Notifications</Text>
+              <ModernButton
+                title={notifEnabled ? 'Enabled' : 'Enable'}
+                onPress={handleEnableNotif}
+                loading={notifLoading}
+                disabled={notifEnabled}
+                variant={notifEnabled ? 'ghost' : 'outline'}
+                size="sm"
+              />
+            </View>
+            
+            <Text style={{ 
+              color: DesignSystem.colors.neutral[500], 
+              fontSize: 13 
+            }}>
+              Status: {notifStatus.charAt(0).toUpperCase() + notifStatus.slice(1)}
+            </Text>
+          </ModernCard>
+        </Animated.View>
+        
         {/* Security Card */}
-        <Card style={styles.card}>
-          <View style={styles.cardContent}>
-            <Text style={styles.sectionTitle}>Security</Text>
-            <Button mode="outlined" style={styles.fullButton} labelStyle={styles.fullButtonLabel} onPress={() => setChangePasswordOpen(true)}>Change Password</Button>
-            <Button mode="outlined" style={styles.fullButton} labelStyle={styles.fullButtonLabel} onPress={() => setChangeEmailOpen(true)}>Change Email</Button>
-            <Button mode="outlined" style={[styles.cancelButton, { marginTop: 16 }]} labelStyle={styles.cancelButtonLabel} onPress={() => setDeleteDialog(true)}>Delete Account</Button>
-            <Button mode="outlined" style={[styles.cancelButton, { marginTop: 16 }]} labelStyle={styles.cancelButtonLabel} onPress={handleLogout}>Log Out</Button>
-          </View>
-        </Card>
+        <Animated.View entering={FadeInDown.delay(600)}>
+          <ModernCard style={{ marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: DesignSystem.colors.error[100],
+                borderRadius: 12,
+                padding: 8,
+                marginRight: 12,
+              }}>
+                <Shield size={24} color={DesignSystem.colors.error[600]} />
+              </View>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 20, 
+                color: DesignSystem.colors.neutral[900] 
+              }}>
+                Security
+              </Text>
+            </View>
+            
+            <ModernButton
+              title="Change Password"
+              onPress={() => setChangePasswordOpen(true)}
+              variant="outline"
+              fullWidth
+              style={{ marginBottom: 12 }}
+              icon={<Lock size={18} color={DesignSystem.colors.primary[600]} />}
+            />
+            
+            <ModernButton
+              title="Change Email"
+              onPress={() => setChangeEmailOpen(true)}
+              variant="outline"
+              fullWidth
+              style={{ marginBottom: 16 }}
+              icon={<Mail size={18} color={DesignSystem.colors.primary[600]} />}
+            />
+            
+            <ModernButton
+              title="Delete Account"
+              onPress={() => setDeleteDialog(true)}
+              variant="danger"
+              fullWidth
+              style={{ marginBottom: 12 }}
+              icon={<Trash2 size={18} color="#fff" />}
+            />
+            
+            <ModernButton
+              title="Log Out"
+              onPress={handleLogout}
+              variant="outline"
+              fullWidth
+              icon={<LogOut size={18} color={DesignSystem.colors.primary[600]} />}
+            />
+          </ModernCard>
+        </Animated.View>
+        
         {/* App Info & Support Card */}
-        <Card style={styles.card}>
-          <View style={styles.cardContent}>
-            <Text style={styles.sectionTitle}>App Info & Support</Text>
-            <Text style={styles.label}>Version: <Text style={styles.value}>{appVersion}</Text></Text>
-            <Button mode="text" onPress={() => Linking.openURL('mailto:support@splitchey.com')} style={{ marginTop: 8 }}>Contact Support</Button>
-            <Button mode="text" onPress={() => Linking.openURL('https://splitchey.com/privacy-policy')} style={{ marginTop: 2 }}>Privacy Policy</Button>
-            <Button mode="text" onPress={() => Linking.openURL('https://splitchey.com/terms-of-service')} style={{ marginTop: 2 }}>Terms of Service</Button>
-          </View>
-        </Card>
+        <Animated.View entering={FadeInDown.delay(700)}>
+          <ModernCard>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: DesignSystem.colors.neutral[100],
+                borderRadius: 12,
+                padding: 8,
+                marginRight: 12,
+              }}>
+                <MaterialCommunityIcons name="information" size={24} color={DesignSystem.colors.neutral[600]} />
+              </View>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 20, 
+                color: DesignSystem.colors.neutral[900] 
+              }}>
+                App Info & Support
+              </Text>
+            </View>
+            
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ 
+                color: DesignSystem.colors.neutral[600], 
+                fontSize: 14 
+              }}>
+                Version: <Text style={{ 
+                  fontWeight: '600', 
+                  color: DesignSystem.colors.neutral[900] 
+                }}>
+                  {appVersion}
+                </Text>
+              </Text>
+            </View>
+            
+            <ModernButton
+              title="Contact Support"
+              onPress={() => Linking.openURL('mailto:support@splitchey.com')}
+              variant="ghost"
+              fullWidth
+              style={{ marginBottom: 8 }}
+            />
+            
+            <ModernButton
+              title="Privacy Policy"
+              onPress={() => Linking.openURL('https://splitchey.com/privacy-policy')}
+              variant="ghost"
+              fullWidth
+              style={{ marginBottom: 8 }}
+            />
+            
+            <ModernButton
+              title="Terms of Service"
+              onPress={() => Linking.openURL('https://splitchey.com/terms-of-service')}
+              variant="ghost"
+              fullWidth
+            />
+          </ModernCard>
+        </Animated.View>
+      </ScrollView>
+      
         {/* Edit Profile Dialog */}
         <Portal>
-          <Dialog visible={editProfileOpen} onDismiss={() => setEditProfileOpen(false)}>
+          <Dialog 
+            visible={editProfileOpen} 
+            onDismiss={() => setEditProfileOpen(false)}
+            style={{ borderRadius: 20 }}
+          >
             <Dialog.Title>Edit Profile</Dialog.Title>
             <Dialog.Content>
-              <TextInput
+              <ModernInput
                 label="Display Name"
                 value={displayName}
                 onChangeText={setDisplayName}
-                style={{ marginBottom: 14 }}
-                mode="outlined"
               />
-              <Text style={{ marginBottom: 6 }}>Default Currency</Text>
+              
+              <Text style={{ 
+                marginBottom: 6, 
+                fontSize: 14, 
+                fontWeight: '600',
+                color: DesignSystem.colors.neutral[700] 
+              }}>
+                Default Currency
+              </Text>
               <TouchableOpacity onPress={() => setCurrencyModal(true)} style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.outline, borderRadius: 8, padding: 12, marginBottom: 8, backgroundColor: colors.elevation.level1 }}>
                 <Text style={{ color: colors.onBackground, fontSize: 16 }}>{SUPPORTED_CURRENCIES.find(c => c.code === currency)?.code} - {SUPPORTED_CURRENCIES.find(c => c.code === currency)?.name}</Text>
                 <Ionicons name="chevron-down" size={20} color={colors.onSurfaceVariant} style={{ marginLeft: 'auto' }} />
@@ -617,134 +856,184 @@ export default function ProfileScreen() {
               </Portal>
             </Dialog.Content>
             <Dialog.Actions>
-              <Button onPress={() => setEditProfileOpen(false)}>Cancel</Button>
-              <Button loading={editLoading} onPress={handleSaveProfile}>Save</Button>
+              <ModernButton
+                title="Cancel"
+                onPress={() => setEditProfileOpen(false)}
+                variant="ghost"
+              />
+              <ModernButton
+                title="Save"
+                onPress={handleSaveProfile}
+                loading={editLoading}
+                variant="primary"
+              />
             </Dialog.Actions>
           </Dialog>
         </Portal>
+        
         {/* Change Password Dialog */}
         <Portal>
-          <Dialog visible={changePasswordOpen} onDismiss={() => setChangePasswordOpen(false)}>
+          <Dialog 
+            visible={changePasswordOpen} 
+            onDismiss={() => setChangePasswordOpen(false)}
+            style={{ borderRadius: 20 }}
+          >
             <Dialog.Title>Change Password</Dialog.Title>
             <Dialog.Content>
-              <TextInput
+              <ModernInput
                 label="Current Password"
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
                 secureTextEntry
-                style={{ marginBottom: 10 }}
-                mode="outlined"
               />
-              <TextInput
+              <ModernInput
                 label="New Password"
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry
-                style={{ marginBottom: 10 }}
-                mode="outlined"
               />
-              <TextInput
+              <ModernInput
                 label="Confirm New Password"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry
-                style={{ marginBottom: 10 }}
-                mode="outlined"
               />
             </Dialog.Content>
             <Dialog.Actions>
-              <Button onPress={() => setChangePasswordOpen(false)}>Cancel</Button>
-              <Button loading={passwordLoading} onPress={handleChangePassword}>Save</Button>
+              <ModernButton
+                title="Cancel"
+                onPress={() => setChangePasswordOpen(false)}
+                variant="ghost"
+              />
+              <ModernButton
+                title="Save"
+                onPress={handleChangePassword}
+                loading={passwordLoading}
+                variant="primary"
+              />
             </Dialog.Actions>
           </Dialog>
         </Portal>
+        
         {/* Change Email Dialog */}
         <Portal>
-          <Dialog visible={changeEmailOpen} onDismiss={() => setChangeEmailOpen(false)}>
+          <Dialog 
+            visible={changeEmailOpen} 
+            onDismiss={() => setChangeEmailOpen(false)}
+            style={{ borderRadius: 20 }}
+          >
             <Dialog.Title>Change Email</Dialog.Title>
             <Dialog.Content>
-              <TextInput
+              <ModernInput
                 label="New Email"
                 value={newEmail}
                 onChangeText={setNewEmail}
-                style={{ marginBottom: 10 }}
-                mode="outlined"
                 keyboardType="email-address"
-                autoCapitalize="none"
               />
-              <TextInput
+              <ModernInput
                 label="Current Password"
                 value={emailPassword}
                 onChangeText={setEmailPassword}
                 secureTextEntry
-                style={{ marginBottom: 10 }}
-                mode="outlined"
               />
             </Dialog.Content>
             <Dialog.Actions>
-              <Button onPress={() => setChangeEmailOpen(false)}>Cancel</Button>
-              <Button loading={emailLoading} onPress={handleChangeEmail}>Save</Button>
+              <ModernButton
+                title="Cancel"
+                onPress={() => setChangeEmailOpen(false)}
+                variant="ghost"
+              />
+              <ModernButton
+                title="Save"
+                onPress={handleChangeEmail}
+                loading={emailLoading}
+                variant="primary"
+              />
             </Dialog.Actions>
           </Dialog>
         </Portal>
+        
         {/* Delete Account Dialog (real) */}
         <Portal>
-          <Dialog visible={deleteDialog} onDismiss={() => setDeleteDialog(false)}>
+          <Dialog 
+            visible={deleteDialog} 
+            onDismiss={() => setDeleteDialog(false)}
+            style={{ borderRadius: 20 }}
+          >
             <Dialog.Title>Delete Account</Dialog.Title>
             <Dialog.Content>
               <Text>Are you sure you want to delete your account? This action cannot be undone.</Text>
-              <TextInput
+              <ModernInput
                 label="Current Password"
                 value={deletePassword}
                 onChangeText={setDeletePassword}
                 secureTextEntry
-                style={{ marginTop: 10 }}
-                mode="outlined"
               />
             </Dialog.Content>
             <Dialog.Actions>
-              <Button onPress={() => setDeleteDialog(false)}>Cancel</Button>
-              <Button loading={deleteLoading} onPress={handleDeleteAccount}>Delete</Button>
+              <ModernButton
+                title="Cancel"
+                onPress={() => setDeleteDialog(false)}
+                variant="ghost"
+              />
+              <ModernButton
+                title="Delete"
+                onPress={handleDeleteAccount}
+                loading={deleteLoading}
+                variant="danger"
+              />
             </Dialog.Actions>
           </Dialog>
         </Portal>
 
         {/* Upgrade Dialog */}
         <Portal>
-          <Dialog visible={upgradeDialog} onDismiss={() => setUpgradeDialog(false)}>
+          <Dialog 
+            visible={upgradeDialog} 
+            onDismiss={() => setUpgradeDialog(false)}
+            style={{ borderRadius: 20 }}
+          >
             <Dialog.Title>Upgrade to Premium</Dialog.Title>
-            <Dialog.Content style={styles.dialogContent}>
+            <Dialog.Content style={{ paddingVertical: 16 }}>
               <Text style={{ marginBottom: 16 }}>Choose your plan:</Text>
-              <Button 
-                mode="contained" 
-                style={{ marginBottom: 8 }} 
+              <ModernButton
+                title="Monthly - $4.99/month"
                 onPress={() => handleUpgradeToPremium('monthly')}
                 loading={upgrading && upgradePeriod === 'monthly'}
                 disabled={upgrading}
-              >
-                {upgrading && upgradePeriod === 'monthly' ? 'Upgrading...' : 'Monthly - $4.99/month'}
-              </Button>
-              <Button 
-                mode="contained" 
-                style={{ marginBottom: 8 }} 
+                variant="primary"
+                fullWidth
+                style={{ marginBottom: 12 }}
+              />
+              <ModernButton
+                title="Yearly - $49.99/year (Save 17%)"
                 onPress={() => handleUpgradeToPremium('yearly')}
                 loading={upgrading && upgradePeriod === 'yearly'}
                 disabled={upgrading}
-              >
-                {upgrading && upgradePeriod === 'yearly' ? 'Upgrading...' : 'Yearly - $49.99/year (Save 17%)'}
-              </Button>
+                variant="secondary"
+                fullWidth
+              />
             </Dialog.Content>
-            <Dialog.Actions style={styles.dialogActions}>
-              <Button onPress={() => setUpgradeDialog(false)} disabled={upgrading}>Cancel</Button>
+            <Dialog.Actions style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+              <ModernButton
+                title="Cancel"
+                onPress={() => setUpgradeDialog(false)}
+                disabled={upgrading}
+                variant="ghost"
+              />
             </Dialog.Actions>
           </Dialog>
         </Portal>
 
         {/* Manage Subscription Dialog */}
         <Portal>
-          <Dialog visible={manageSubscriptionOpen} onDismiss={() => setManageSubscriptionOpen(false)}>
+          <Dialog 
+            visible={manageSubscriptionOpen} 
+            onDismiss={() => setManageSubscriptionOpen(false)}
+            style={{ borderRadius: 20 }}
+          >
             <Dialog.Title>Manage Your Subscription</Dialog.Title>
-            <Dialog.Content style={styles.dialogContent}>
+            <Dialog.Content style={{ paddingVertical: 16 }}>
               <Text style={{ marginBottom: 16 }}>
                 You are currently on the{' '}
                 <Text style={{ fontWeight: 'bold' }}>
@@ -765,17 +1054,19 @@ export default function ProfileScreen() {
                 This will cancel your Premium subscription at the end of the current billing period. You will be downgraded to the Free plan.
               </Text>
             </Dialog.Content>
-            <Dialog.Actions style={styles.dialogActions}>
-              <Button onPress={() => setManageSubscriptionOpen(false)}>Close</Button>
-              <Button 
-                mode="contained" 
-                buttonColor={colors.error}
+            <Dialog.Actions style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+              <ModernButton
+                title="Close"
+                onPress={() => setManageSubscriptionOpen(false)}
+                variant="ghost"
+              />
+              <ModernButton
+                title="Cancel Subscription"
                 onPress={handleCancelSubscription}
                 loading={canceling}
                 disabled={canceling}
-              >
-                {canceling ? 'Canceling...' : 'Cancel Subscription'}
-              </Button>
+                variant="danger"
+              />
             </Dialog.Actions>
           </Dialog>
         </Portal>
@@ -784,11 +1075,14 @@ export default function ProfileScreen() {
           visible={snackbar.visible}
           onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
           duration={3000}
-          style={{ backgroundColor: snackbar.error ? colors.error : colors.primary }}
+          style={{ 
+            backgroundColor: snackbar.error ? DesignSystem.colors.error[500] : DesignSystem.colors.primary[500],
+            borderRadius: 12,
+            margin: 16,
+          }}
         >
           {snackbar.message}
         </Snackbar>
-      </View>
-    </ScrollView>
+    </Surface>
   );
 } 

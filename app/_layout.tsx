@@ -1,9 +1,9 @@
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-import { PaperProvider } from 'react-native-paper';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { PaperProvider } from 'react-native-paper';
+import 'react-native-reanimated';
 
 import { ThemeProvider, useThemeMode } from '../contexts/ThemeContext';
 import { AuthProvider } from '../firebase/AuthProvider';

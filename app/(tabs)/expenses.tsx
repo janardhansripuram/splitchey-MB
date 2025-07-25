@@ -1,15 +1,14 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, FlatList, StyleSheet, Alert, Dimensions, Platform, ScrollView, RefreshControl } from 'react-native';
-import { TouchableOpacity } from 'react-native';
-import { Surface, Text, Card, Button, ActivityIndicator, useTheme, FAB, IconButton, Chip, Paragraph, Divider, TextInput, Menu, Portal, Dialog } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useAuth } from '../../hooks/useAuth';
-import { getExpensesByUser, deleteExpense, getGroupsForUser, getSplitExpensesForUser } from '../../firebase/firestore';
-import { useRouter } from 'expo-router';
-import { format } from 'date-fns';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import BottomSheet, { BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Dimensions, FlatList, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Button, Card, Chip, Dialog, Divider, FAB, IconButton, Menu, Paragraph, Portal, Surface, Text, TextInput, useTheme } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { deleteExpense, getExpensesByUser, getGroupsForUser, getSplitExpensesForUser } from '../../firebase/firestore';
+import { useAuth } from '../../hooks/useAuth';
 
 const BOTTOM_SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.68);
 

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { View, Alert } from 'react-native';
-import { Surface, Text, TextInput, Button, useTheme } from 'react-native-paper';
 import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Alert, View } from 'react-native';
+import { Button, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 // import { createGroup } from '../firebase/firestore'; // TODO: Implement this
 
 export default function CreateGroupScreen() {

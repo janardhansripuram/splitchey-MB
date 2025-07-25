@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
-import { Surface, Text, Button, Card, useTheme, ActivityIndicator, Snackbar, Avatar } from 'react-native-paper';
-import { useAuth } from '../hooks/useAuth';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { sendEmailVerification, signOut } from 'firebase/auth';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Button, Card, Snackbar, Surface, Text, useTheme } from 'react-native-paper';
 import { auth } from '../firebase/config';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useAuth } from '../hooks/useAuth';
 
 export default function VerifyEmailScreen() {
   const { authUser, userProfile, loading, refetchAuthUser } = useAuth();

@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl, TouchableOpacity } from 'react-native';
-import { Surface, Text, Card, Button, Avatar, ActivityIndicator, useTheme, Snackbar, IconButton, Portal, Dialog, TextInput } from 'react-native-paper';
-import { useAuth } from '../../hooks/useAuth';
-import { getFriends, getIncomingFriendRequests, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, getSplitExpensesForUser, removeFriend, getUserProfile } from '../../firebase/firestore';
 import { useRouter } from 'expo-router';
-import { UserPlus, Inbox } from 'lucide-react-native';
+import { Inbox, UserPlus } from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Avatar, Button, Card, Dialog, IconButton, Portal, Snackbar, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { acceptFriendRequest, getFriends, getIncomingFriendRequests, getSplitExpensesForUser, getUserProfile, rejectFriendRequest, sendFriendRequest } from '../../firebase/firestore';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function FriendsScreen() {
   const { authUser, userProfile, loading: authLoading } = useAuth();

@@ -1,26 +1,16 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Alert, ScrollView, KeyboardAvoidingView, Platform, Clipboard, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import { TouchableOpacity } from 'react-native';
-import { Surface, Text, Button, useTheme, Card, List, Avatar, FAB, Dialog, Portal, TextInput, ActivityIndicator, Badge, Divider, Chip, IconButton, Tooltip, Menu, Checkbox } from 'react-native-paper';
-import GroupButton from '../components/ui/GroupButton';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getGroupDetails, getExpensesByGroupId, getSplitExpensesByGroupId, getGroupActivityLog, getChatMessages, Group, Expense, SplitExpense, GroupActivityLogEntry, ChatMessage } from '../firebase/firestore';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { addChatMessage } from '../firebase/firestore';
-import { useAuth } from '../hooks/useAuth';
 import { Ionicons } from '@expo/vector-icons';
-import { getGroupSavingsGoalsByGroupId, addGroupSavingsGoal } from '../firebase/firestore';
-import { updateMemberRole, transferGroupOwnership, removeMemberFromGroup, addMembersToGroup } from '../firebase/firestore';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase/config';
-import { Snackbar } from 'react-native-paper';
-import { getFriends } from '../firebase/firestore';
-import { addContributionToGroupGoal, getContributionsForGroupGoal } from '../firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
-import { ref, uploadString, getDownloadURL, uploadBytes } from 'firebase/storage';
-import { storage } from '../firebase/config';
-import { updateGroupDetails, updateGroupImageUrl } from '../firebase/firestore';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Clipboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, Avatar, Badge, Button, Card, Checkbox, Dialog, Divider, IconButton, List, Menu, Portal, Snackbar, Surface, Text, TextInput, Tooltip, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import GroupButton from '../components/ui/GroupButton';
+import { db, storage } from '../firebase/config';
+import { addChatMessage, addContributionToGroupGoal, addGroupSavingsGoal, addMembersToGroup, ChatMessage, Expense, getChatMessages, getContributionsForGroupGoal, getExpensesByGroupId, getFriends, getGroupActivityLog, getGroupDetails, getGroupSavingsGoalsByGroupId, getSplitExpensesByGroupId, Group, GroupActivityLogEntry, removeMemberFromGroup, SplitExpense, transferGroupOwnership, updateGroupDetails, updateGroupImageUrl, updateMemberRole } from '../firebase/firestore';
+import { useAuth } from '../hooks/useAuth';
 
 const TABS = [
   { key: 'expenses', label: 'Expenses', icon: 'currency-usd' },

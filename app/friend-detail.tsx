@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, StyleSheet, Platform } from 'react-native';
-import { Surface, Text, Card, Button, Avatar, ActivityIndicator, useTheme, Snackbar, List, Divider, Chip, IconButton, Portal, Dialog } from 'react-native-paper';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useAuth } from '../hooks/useAuth';
-import { getUserProfile, getSplitExpensesForUser, settleDebtWithWallet, sendDebtReminder } from '../firebase/firestore';
 import { format } from 'date-fns';
-import { ArrowLeft, Scale, Bell, CheckCircle2 } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, Bell, CheckCircle2, Scale } from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Avatar, Button, Card, Chip, Dialog, IconButton, Portal, Snackbar, Surface, Text, useTheme } from 'react-native-paper';
+import { getSplitExpensesForUser, getUserProfile, sendDebtReminder, settleDebtWithWallet } from '../firebase/firestore';
+import { useAuth } from '../hooks/useAuth';
 
 interface SplitParticipant {
   userId: string;

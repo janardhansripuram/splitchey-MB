@@ -1,7 +1,7 @@
-import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { useAuth } from '../../hooks/useAuth';
 import DashboardScreen from '../DashboardScreen';
 
 export default function HomeTab() {

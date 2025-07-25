@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { View, Alert } from 'react-native';
-import { Surface, Text, TextInput, Button, useTheme, HelperText } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Alert, View } from 'react-native';
+import { Button, HelperText, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 // import { getExpenseById, updateExpense } from '../firebase/firestore'; // TODO: Implement
 
 const categories = [

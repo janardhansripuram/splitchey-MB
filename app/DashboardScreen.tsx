@@ -1,13 +1,12 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, ScrollView, Image, StyleSheet, RefreshControl } from 'react-native';
-import { TouchableOpacity } from 'react-native';
-import { Surface, Text, Avatar, Button, Card, ActivityIndicator, FAB, useTheme, Chip, IconButton, Divider, Snackbar } from 'react-native-paper';
-import { useAuth } from '../hooks/useAuth';
-import { getRecentExpensesByUser, getFriends, getSplitExpensesForUser, getGroupsForUser } from '../firebase/firestore';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Avatar, Button, Card, Snackbar, Surface, Text, useTheme } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFriends, getGroupsForUser, getRecentExpensesByUser, getSplitExpensesForUser } from '../firebase/firestore';
+import { useAuth } from '../hooks/useAuth';
 
 export default function DashboardScreen() {
   const { authUser, userProfile } = useAuth();

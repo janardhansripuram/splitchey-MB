@@ -1,12 +1,20 @@
-import React, { useState, useRef } from 'react';
-import { View, Image, KeyboardAvoidingView, Platform, StyleSheet, Dimensions, ScrollView, TouchableOpacity } from 'react-native';
-import { Text, TextInput, Button, Surface, Card, useTheme, Snackbar, Modal, Portal, List } from 'react-native-paper';
-import { auth } from '../firebase/config';
-import { createUserWithEmailAndPassword, sendEmailVerification, signInWithPhoneNumber } from 'firebase/auth';
-import { createUserProfile } from '../firebase/firestore';
-import { useRouter } from 'expo-router';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
+import { useRouter } from 'expo-router';
+import { createUserWithEmailAndPassword, sendEmailVerification, signInWithPhoneNumber } from 'firebase/auth';
+import { DollarSign, Eye, EyeOff, Gift, Lock, Mail, MessageSquare, Phone, User } from 'lucide-react-native';
+import React, { useRef, useState } from 'react';
+import { Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Snackbar, Text, useTheme } from 'react-native-paper';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ModernButton } from '../components/ui/ModernButton';
+import { ModernCard } from '../components/ui/ModernCard';
+import { ModernDropdown } from '../components/ui/ModernDropdown';
+import { ModernInput } from '../components/ui/ModernInput';
+import { DesignSystem } from '../constants/DesignSystem';
+import { auth } from '../firebase/config';
+import { createUserProfile } from '../firebase/firestore';
 
 const SUPPORTED_CURRENCIES = [
   { code: 'USD', name: 'US Dollar' },
@@ -38,6 +46,8 @@ export default function SignupScreen() {
   const recaptchaVerifier = useRef<any>(null);
   const router = useRouter();
   const { colors, dark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [showPassword, setShowPassword] = useState(false);
 
   // Email signup logic
   const handleSignupEmail = async () => {
@@ -85,344 +95,365 @@ export default function SignupScreen() {
     setLoading(false);
   };
 
-  // Themed styles
+  const currencyOptions = SUPPORTED_CURRENCIES.map(c => ({
+    label: `${c.code} - ${c.name}`,
+    value: c.code,
+    icon: <DollarSign size={16} color={DesignSystem.colors.neutral[500]} />,
+  }));
+
   const styles = StyleSheet.create({
-    input: {
-      marginBottom: 14,
-      backgroundColor: dark ? colors.elevation.level1 : '#fff',
-      borderRadius: 8,
-      width: CARD_WIDTH - 48, // 24px padding on each side
-      borderWidth: 1,
-      borderColor: dark ? colors.outline : '#e5e7eb',
-      fontSize: 16,
-      alignSelf: 'center',
+    container: {
+      flex: 1,
+      backgroundColor: DesignSystem.colors.primary[500],
     },
-    button: {
-      marginBottom: 12,
-      borderRadius: 8,
-      height: 44,
-      justifyContent: 'center',
-      width: CARD_WIDTH - 48,
-      backgroundColor: colors.primary,
-      alignSelf: 'center',
+    backgroundGradient: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: '60%',
+      backgroundColor: DesignSystem.colors.primary[500],
     },
-    buttonLabel: {
-      fontWeight: '700',
-      fontSize: 16,
-      color: colors.onPrimary,
+    content: {
+      flex: 1,
+      paddingHorizontal: DesignSystem.spacing[6],
+      paddingTop: insets.top + DesignSystem.spacing[8],
     },
-    card: {
-      width: CARD_WIDTH,
+    header: {
       alignItems: 'center',
-      paddingVertical: 24,
-      backgroundColor: dark ? colors.elevation.level2 : '#fafbfc',
-      borderRadius: 16,
-      shadowColor: '#000',
-      shadowOpacity: 0.08,
-      shadowRadius: 12,
-      elevation: 4,
-      borderWidth: 1,
-      borderColor: dark ? colors.outline : '#f0f0f0',
+      marginBottom: DesignSystem.spacing[8],
     },
-    currencyPicker: {
+    logo: {
+      width: 80,
+      height: 80,
+      marginBottom: DesignSystem.spacing[4],
+      borderRadius: DesignSystem.borderRadius.xl,
+    },
+    appName: {
+      fontSize: DesignSystem.typography.fontSizes['3xl'],
+      fontWeight: DesignSystem.typography.fontWeights.bold,
+      color: '#ffffff',
+      marginBottom: DesignSystem.spacing[2],
+    },
+    tagline: {
+      fontSize: DesignSystem.typography.fontSizes.lg,
+      color: 'rgba(255, 255, 255, 0.9)',
+      textAlign: 'center',
+    },
+    formCard: {
+      width: '100%',
+      maxWidth: 400,
+      alignSelf: 'center',
+    },
+    welcomeText: {
+      fontSize: DesignSystem.typography.fontSizes['2xl'],
+      fontWeight: DesignSystem.typography.fontWeights.bold,
+      color: DesignSystem.colors.neutral[900],
+      textAlign: 'center',
+      marginBottom: DesignSystem.spacing[2],
+    },
+    subtitleText: {
+      fontSize: DesignSystem.typography.fontSizes.base,
+      color: DesignSystem.colors.neutral[600],
+      textAlign: 'center',
+      marginBottom: DesignSystem.spacing[8],
+    },
+    tabContainer: {
       flexDirection: 'row',
+      backgroundColor: DesignSystem.colors.neutral[100],
+      borderRadius: DesignSystem.borderRadius.md,
+      padding: DesignSystem.spacing[1],
+      marginBottom: DesignSystem.spacing[6],
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: DesignSystem.spacing[3],
+      borderRadius: DesignSystem.borderRadius.base,
       alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      marginBottom: 14,
-      backgroundColor: dark ? colors.elevation.level1 : '#fff',
-      borderRadius: 8,
-      width: CARD_WIDTH - 48,
-      borderWidth: 1,
-      borderColor: dark ? colors.outline : '#e5e7eb',
-      alignSelf: 'center',
+    },
+    activeTab: {
+      backgroundColor: '#ffffff',
+      ...DesignSystem.shadows.sm,
+    },
+    tabText: {
+      fontSize: DesignSystem.typography.fontSizes.base,
+      fontWeight: DesignSystem.typography.fontWeights.medium,
+    },
+    activeTabText: {
+      color: DesignSystem.colors.primary[600],
+    },
+    inactiveTabText: {
+      color: DesignSystem.colors.neutral[600],
     },
     divider: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginVertical: 18,
-      width: CARD_WIDTH - 48,
-      alignSelf: 'center',
+      marginVertical: DesignSystem.spacing[6],
     },
     dividerLine: {
       flex: 1,
       height: 1,
-      backgroundColor: dark ? colors.outline : '#e5e7eb',
+      backgroundColor: DesignSystem.colors.neutral[200],
     },
     dividerText: {
-      marginHorizontal: 10,
-      color: colors.onSurfaceVariant,
-      fontWeight: '700',
-      fontSize: 13,
+      marginHorizontal: DesignSystem.spacing[4],
+      fontSize: DesignSystem.typography.fontSizes.sm,
+      fontWeight: DesignSystem.typography.fontWeights.medium,
+      color: DesignSystem.colors.neutral[500],
+    },
+    socialButton: {
+      marginBottom: DesignSystem.spacing[3],
     },
     bottomText: {
-      color: colors.onSurfaceVariant,
-      fontSize: 15,
+      textAlign: 'center',
+      marginTop: DesignSystem.spacing[6],
+      fontSize: DesignSystem.typography.fontSizes.base,
+      color: DesignSystem.colors.neutral[600],
     },
-    appName: {
-      fontWeight: '700',
-      fontSize: 22,
-      color: colors.onBackground,
-      marginBottom: 0,
-    },
-    tabText: {
-      fontSize: 16,
-    },
-    tabActive: {
-      fontWeight: '700',
-      color: colors.onBackground,
-    },
-    tabInactive: {
-      fontWeight: '400',
-      color: colors.onSurfaceVariant,
+    linkText: {
+      color: DesignSystem.colors.primary[600],
+      fontWeight: DesignSystem.typography.fontWeights.semibold,
     },
   });
 
   return (
-    <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: dark ? colors.background : '#fff', paddingHorizontal: 16 }}>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={DesignSystem.colors.primary[500]} />
+      
+      {/* Background Gradient */}
+      <View style={styles.backgroundGradient} />
+      
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center', flex: 1 }}>
-        <ScrollView contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-          <View style={{ marginBottom: 32, alignItems: 'center' }}>
-            <Image source={require('../assets/images/icon.png')} style={{ width: 48, height: 48, marginBottom: 8 }} />
-            <Text style={styles.appName}>SplitChey</Text>
-          </View>
-          <Card style={styles.card}>
-            <Card.Content style={{ width: '100%' }}>
-              <Text style={{ fontWeight: '700', fontSize: 22, textAlign: 'center', marginBottom: 4, color: colors.onBackground }}>Create an Account</Text>
-              <Text style={{ color: colors.onSurfaceVariant, textAlign: 'center', marginBottom: 20, fontSize: 15 }}>Sign up to start managing your finances.</Text>
-              {/* Tabs */}
-              <View style={{
-                flexDirection: 'row',
-                backgroundColor: dark ? colors.elevation.level1 : '#f3f4f6',
-                borderRadius: 8,
-                marginBottom: 18,
-                overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: dark ? colors.outline : '#e5e7eb',
-              }}>
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 8,
-                    backgroundColor: tab === 'email' ? (dark ? colors.background : '#fff') : 'transparent',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => setTab('email')}
-                >
-                  <Text style={[styles.tabText, tab === 'email' ? styles.tabActive : styles.tabInactive]}>Email</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 8,
-                    backgroundColor: tab === 'phone' ? (dark ? colors.background : '#fff') : 'transparent',
-                    alignItems: 'center',
-                  }}
-                  onPress={() => setTab('phone')}
-                >
-                  <Text style={[styles.tabText, tab === 'phone' ? styles.tabActive : styles.tabInactive]}>Phone</Text>
-                </TouchableOpacity>
-              </View>
-              {/* Email Tab */}
-              {tab === 'email' && (
-                <View style={{ width: '100%' }}>
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Display Name</Text>
-                  <TextInput
-                    label="Your name"
-                    value={displayName}
-                    onChangeText={setDisplayName}
-                    style={styles.input}
-                    mode="flat"
-                    underlineColor="transparent"
-                    selectionColor={colors.primary}
-                    theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
-                  />
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Email</Text>
-                  <TextInput
-                    label="you@example.com"
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    style={styles.input}
-                    mode="flat"
-                    underlineColor="transparent"
-                    selectionColor={colors.primary}
-                    theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
-                  />
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Password</Text>
-                  <TextInput
-                    label="********"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    style={styles.input}
-                    mode="flat"
-                    underlineColor="transparent"
-                    selectionColor={colors.primary}
-                    theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
-                  />
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Default Currency</Text>
-                  <TouchableOpacity onPress={() => setCurrencyModal(true)} style={styles.currencyPicker}>
-                    <Text style={{ color: colors.onBackground, fontSize: 16 }}>{SUPPORTED_CURRENCIES.find(c => c.code === currency)?.code} - {SUPPORTED_CURRENCIES.find(c => c.code === currency)?.name}</Text>
-                    <Ionicons name="chevron-down" size={20} color={colors.onSurfaceVariant} />
+        <ScrollView 
+          contentContainerStyle={{ flexGrow: 1 }} 
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.content}>
+            {/* Header */}
+            <Animated.View entering={FadeInUp.delay(200)} style={styles.header}>
+              <Image 
+                source={require('../assets/images/icon.png')} 
+                style={styles.logo}
+              />
+              <Text style={styles.appName}>SplitChey</Text>
+              <Text style={styles.tagline}>Join thousands managing expenses smarter</Text>
+            </Animated.View>
+
+            {/* Signup Form */}
+            <Animated.View entering={FadeInDown.delay(400)}>
+              <ModernCard style={styles.formCard} variant="elevated">
+                <Text style={styles.welcomeText}>Create Account</Text>
+                <Text style={styles.subtitleText}>Start your journey to smarter expense management</Text>
+
+                {/* Tab Selector */}
+                <View style={styles.tabContainer}>
+                  <TouchableOpacity
+                    style={[styles.tab, tab === 'email' && styles.activeTab]}
+                    onPress={() => setTab('email')}
+                  >
+                    <Text style={[styles.tabText, tab === 'email' ? styles.activeTabText : styles.inactiveTabText]}>
+                      Email
+                    </Text>
                   </TouchableOpacity>
-                  <Portal>
-                    <Modal visible={currencyModal} onDismiss={() => setCurrencyModal(false)} contentContainerStyle={{ backgroundColor: colors.background, margin: 24, borderRadius: 12, padding: 0 }}>
-                      <List.Section>
-                        {SUPPORTED_CURRENCIES.map(c => (
-                          <List.Item
-                            key={c.code}
-                            title={`${c.code} - ${c.name}`}
-                            onPress={() => { setCurrency(c.code); setCurrencyModal(false); }}
-                            left={props => <List.Icon {...props} icon={currency === c.code ? 'check-circle' : 'circle-outline'} color={currency === c.code ? colors.primary : colors.onSurfaceVariant} />}
-                          />
-                        ))}
-                      </List.Section>
-                    </Modal>
-                  </Portal>
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Referral Code (Optional)</Text>
-                  <TextInput
-                    label="Referral code"
-                    value={referralCode}
-                    onChangeText={setReferralCode}
-                    style={styles.input}
-                    mode="flat"
-                    underlineColor="transparent"
-                    selectionColor={colors.primary}
-                    theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
-                  />
-                  <Button mode="contained" onPress={handleSignupEmail} loading={loading} style={styles.button} labelStyle={styles.buttonLabel}>Create Account</Button>
+                  <TouchableOpacity
+                    style={[styles.tab, tab === 'phone' && styles.activeTab]}
+                    onPress={() => setTab('phone')}
+                  >
+                    <Text style={[styles.tabText, tab === 'phone' ? styles.activeTabText : styles.inactiveTabText]}>
+                      Phone
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              )}
-              {/* Phone Tab */}
-              {tab === 'phone' && (
-                <View style={{ width: '100%' }}>
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Display Name</Text>
-                  <TextInput
-                    label="Your name"
-                    value={displayName}
-                    onChangeText={setDisplayName}
-                    style={styles.input}
-                    mode="flat"
-                    underlineColor="transparent"
-                    selectionColor={colors.primary}
-                    theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
-                  />
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Phone</Text>
-                  <TextInput
-                    label="+1234567890"
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
-                    style={styles.input}
-                    mode="flat"
-                    underlineColor="transparent"
-                    selectionColor={colors.primary}
-                    theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
-                  />
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Default Currency</Text>
-                  <TouchableOpacity onPress={() => setCurrencyModal(true)} style={styles.currencyPicker}>
-                    <Text style={{ color: colors.onBackground, fontSize: 16 }}>{SUPPORTED_CURRENCIES.find(c => c.code === currency)?.code} - {SUPPORTED_CURRENCIES.find(c => c.code === currency)?.name}</Text>
-                    <Ionicons name="chevron-down" size={20} color={colors.onSurfaceVariant} />
-                  </TouchableOpacity>
-                  <Portal>
-                    <Modal visible={currencyModal} onDismiss={() => setCurrencyModal(false)} contentContainerStyle={{ backgroundColor: colors.background, margin: 24, borderRadius: 12, padding: 0 }}>
-                      <List.Section>
-                        {SUPPORTED_CURRENCIES.map(c => (
-                          <List.Item
-                            key={c.code}
-                            title={`${c.code} - ${c.name}`}
-                            onPress={() => { setCurrency(c.code); setCurrencyModal(false); }}
-                            left={props => <List.Icon {...props} icon={currency === c.code ? 'check-circle' : 'circle-outline'} color={currency === c.code ? colors.primary : colors.onSurfaceVariant} />}
-                          />
-                        ))}
-                      </List.Section>
-                    </Modal>
-                  </Portal>
-                  <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Referral Code (Optional)</Text>
-                  <TextInput
-                    label="Referral code"
-                    value={referralCode}
-                    onChangeText={setReferralCode}
-                    style={styles.input}
-                    mode="flat"
-                    underlineColor="transparent"
-                    selectionColor={colors.primary}
-                    theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
-                  />
-                  {!otpStep ? (
-                    <Button mode="contained" onPress={handleSendCode} loading={loading} style={styles.button} labelStyle={styles.buttonLabel}>Send Code</Button>
-                  ) : (
-                    <>
-                      <Text style={{ color: colors.onBackground, fontWeight: '700', marginBottom: 6, marginLeft: 2 }}>Verification Code</Text>
-                      <TextInput
-                        label="Enter code"
-                        value={otp}
-                        onChangeText={setOtp}
-                        keyboardType="number-pad"
-                        style={styles.input}
-                        mode="flat"
-                        underlineColor="transparent"
-                        selectionColor={colors.primary}
-                        theme={{ colors: { text: colors.onBackground, placeholder: colors.onSurfaceVariant } }}
+
+                {/* Email Signup Form */}
+                {tab === 'email' && (
+                  <Animated.View entering={FadeInDown.delay(100)}>
+                    <ModernInput
+                      label="Display Name"
+                      placeholder="Enter your full name"
+                      value={displayName}
+                      onChangeText={setDisplayName}
+                      leftIcon={<User size={20} color={DesignSystem.colors.neutral[500]} />}
+                    />
+                    
+                    <ModernInput
+                      label="Email Address"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      leftIcon={<Mail size={20} color={DesignSystem.colors.neutral[500]} />}
+                    />
+                    
+                    <ModernInput
+                      label="Password"
+                      placeholder="Create a strong password"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      leftIcon={<Lock size={20} color={DesignSystem.colors.neutral[500]} />}
+                      rightIcon={
+                        showPassword ? 
+                          <EyeOff size={20} color={DesignSystem.colors.neutral[500]} /> :
+                          <Eye size={20} color={DesignSystem.colors.neutral[500]} />
+                      }
+                      onRightIconPress={() => setShowPassword(!showPassword)}
+                    />
+
+                    <ModernDropdown
+                      label="Default Currency"
+                      placeholder="Select your currency"
+                      options={currencyOptions}
+                      value={currency}
+                      onSelect={setCurrency}
+                    />
+
+                    <ModernInput
+                      label="Referral Code (Optional)"
+                      placeholder="Enter referral code if you have one"
+                      value={referralCode}
+                      onChangeText={setReferralCode}
+                      leftIcon={<Gift size={20} color={DesignSystem.colors.neutral[500]} />}
+                    />
+
+                    <ModernButton
+                      title="Create Account"
+                      onPress={handleSignupEmail}
+                      loading={loading}
+                      fullWidth
+                      style={{ marginTop: DesignSystem.spacing[2] }}
+                    />
+                  </Animated.View>
+                )}
+
+                {/* Phone Signup Form */}
+                {tab === 'phone' && (
+                  <Animated.View entering={FadeInDown.delay(100)}>
+                    <ModernInput
+                      label="Display Name"
+                      placeholder="Enter your full name"
+                      value={displayName}
+                      onChangeText={setDisplayName}
+                      leftIcon={<User size={20} color={DesignSystem.colors.neutral[500]} />}
+                    />
+                    
+                    <ModernInput
+                      label="Phone Number"
+                      placeholder="Enter your phone number"
+                      value={phone}
+                      onChangeText={setPhone}
+                      keyboardType="phone-pad"
+                      leftIcon={<Phone size={20} color={DesignSystem.colors.neutral[500]} />}
+                    />
+
+                    <ModernDropdown
+                      label="Default Currency"
+                      placeholder="Select your currency"
+                      options={currencyOptions}
+                      value={currency}
+                      onSelect={setCurrency}
+                    />
+
+                    <ModernInput
+                      label="Referral Code (Optional)"
+                      placeholder="Enter referral code if you have one"
+                      value={referralCode}
+                      onChangeText={setReferralCode}
+                      leftIcon={<Gift size={20} color={DesignSystem.colors.neutral[500]} />}
+                    />
+
+                    {!otpStep ? (
+                      <ModernButton
+                        title="Send Verification Code"
+                        onPress={handleSendCode}
+                        loading={loading}
+                        fullWidth
+                        style={{ marginTop: DesignSystem.spacing[2] }}
                       />
-                      <Button mode="contained" onPress={handleVerifyCode} loading={loading} style={styles.button} labelStyle={styles.buttonLabel}>Verify Code</Button>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <ModernInput
+                          label="Verification Code"
+                          placeholder="Enter 6-digit code"
+                          value={otp}
+                          onChangeText={setOtp}
+                          keyboardType="number-pad"
+                          leftIcon={<MessageSquare size={20} color={DesignSystem.colors.neutral[500]} />}
+                          maxLength={6}
+                        />
+                        
+                        <ModernButton
+                          title="Verify & Create Account"
+                          onPress={handleVerifyCode}
+                          loading={loading}
+                          fullWidth
+                          style={{ marginTop: DesignSystem.spacing[2] }}
+                        />
+                      </>
+                    )}
+                  </Animated.View>
+                )}
+
+                {/* Divider */}
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+                  <View style={styles.dividerLine} />
                 </View>
-              )}
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-                <View style={styles.dividerLine} />
-              </View>
-              <Button
-                icon={() => <MaterialCommunityIcons name="google" size={20} color={colors.onBackground} style={{ marginRight: 8 }} />}
-                mode="outlined"
-                onPress={() => {}}
-                disabled={loading}
-                style={styles.button}
-                labelStyle={[styles.buttonLabel, { color: colors.onBackground }]}
-              >
-                Continue with Google
-              </Button>
-              <Button
-                icon={() => <MaterialCommunityIcons name="facebook" size={20} color="#fff" style={{ marginRight: 8 }} />}
-                mode="contained"
-                buttonColor="#1877F2"
-                textColor="#fff"
-                onPress={() => {}}
-                disabled={loading}
-                style={[styles.button, { backgroundColor: '#1877F2', marginBottom: 8 }]}
-                labelStyle={[styles.buttonLabel, { color: '#fff' }]}
-              >
-                Continue with Facebook
-              </Button>
-              <View style={{ marginTop: 16, alignItems: 'center' }}>
-                <Text style={styles.bottomText}>Already have an account?{' '}
-                  <TouchableOpacity onPress={() => router.push('/login')}><Text style={{ color: colors.primary, fontWeight: '700' }}>Log in</Text></TouchableOpacity>
+
+                {/* Social Signup Buttons */}
+                <ModernButton
+                  title="Continue with Google"
+                  onPress={() => {}}
+                  variant="outline"
+                  disabled={loading}
+                  fullWidth
+                  style={styles.socialButton}
+                  icon={<MaterialCommunityIcons name="google" size={20} color={DesignSystem.colors.neutral[700]} />}
+                />
+
+                <ModernButton
+                  title="Continue with Facebook"
+                  onPress={() => {}}
+                  disabled={loading}
+                  fullWidth
+                  style={[styles.socialButton, { backgroundColor: '#1877F2' }]}
+                  icon={<MaterialCommunityIcons name="facebook" size={20} color="#ffffff" />}
+                />
+
+                {/* Bottom Link */}
+                <Text style={styles.bottomText}>
+                  Already have an account?{' '}
+                  <TouchableOpacity onPress={() => router.push('/login')}>
+                    <Text style={styles.linkText}>Sign in</Text>
+                  </TouchableOpacity>
                 </Text>
-              </View>
-            </Card.Content>
-          </Card>
+              </ModernCard>
+            </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      
       <FirebaseRecaptchaVerifierModal
         ref={recaptchaVerifier}
         firebaseConfig={auth.app.options}
       />
+      
       <Snackbar
         visible={snackbar.visible}
         onDismiss={() => setSnackbar({ visible: false, message: '', color: '' })}
         duration={2500}
-        style={{ backgroundColor: snackbar.color || colors.primary }}
+        style={{ 
+          backgroundColor: snackbar.color === 'red' ? DesignSystem.colors.error[500] : 
+                          snackbar.color === 'green' ? DesignSystem.colors.success[500] :
+                          DesignSystem.colors.primary[500],
+          borderRadius: DesignSystem.borderRadius.md,
+          margin: DesignSystem.spacing[4],
+        }}
       >
         {snackbar.message}
       </Snackbar>
-    </Surface>
+    </View>
   );
 } 

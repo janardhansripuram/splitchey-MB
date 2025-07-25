@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, Share } from 'react-native';
-import { Surface, Text, TextInput, Button, Card, ActivityIndicator, useTheme, Snackbar, IconButton } from 'react-native-paper';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useAuth } from '../hooks/useAuth';
-import { getExpensesByUser, getIncomeByUser } from '../firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Voice from '@react-native-voice/voice';
 import * as Notifications from 'expo-notifications';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, Share, View } from 'react-native';
+import { ActivityIndicator, Button, Card, IconButton, Snackbar, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getExpensesByUser, getIncomeByUser } from '../firebase/firestore';
+import { useAuth } from '../hooks/useAuth';
 
 const PERIOD_OPTIONS = [
   { label: 'Last 30 days', value: 30 },

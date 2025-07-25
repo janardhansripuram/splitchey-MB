@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView } from 'react-native';
-import { Surface, Text, Card, Button, List, ActivityIndicator, useTheme, Avatar } from 'react-native-paper';
+import { ScrollView } from 'react-native';
+import { ActivityIndicator, Avatar, Card, List, Surface, Text, useTheme } from 'react-native-paper';
+import { getFriends, getGroupsForUser, getRecentExpensesByUser } from '../firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
-import { getRecentExpensesByUser, getFriends, getGroupsForUser } from '../firebase/firestore';
 
 export default function DashboardScreen() {
   const { authUser, loading } = useAuth();

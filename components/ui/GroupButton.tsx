@@ -1,6 +1,6 @@
 import React from 'react';
-import { Button, useTheme } from 'react-native-paper';
 import { StyleProp, ViewStyle } from 'react-native';
+import { Button, useTheme } from 'react-native-paper';
 
 interface GroupButtonProps {
   mode?: 'contained' | 'outlined' | 'text';

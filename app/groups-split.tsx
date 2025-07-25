@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { View, Alert, ScrollView } from 'react-native';
-import { Surface, Text, useTheme, Card, List, Button, RadioButton, Checkbox, TextInput, HelperText, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getGroupDetails, getExpensesByGroupId, createSplitExpense, Group, Expense, SplitParticipant } from '../firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView } from 'react-native';
+import { ActivityIndicator, Button, Card, HelperText, List, RadioButton, Surface, Text, TextInput, useTheme } from 'react-native-paper';
+import { createSplitExpense, Expense, getExpensesByGroupId, getGroupDetails, Group, SplitParticipant } from '../firebase/firestore';
 
 const SPLIT_METHODS = [
   { label: 'Equally', value: 'equally' },

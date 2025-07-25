@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Surface, Text, useTheme, Card, List, Button, ActivityIndicator, HelperText, Dialog, Portal, TextInput, RadioButton } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getSplitExpensesByGroupId, SplitExpense, settleDebtWithWallet, updateSplitExpense, SplitParticipant, getGroupDetails } from '../firebase/firestore';
+import React, { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
+import { ActivityIndicator, Button, Card, Dialog, HelperText, List, Portal, RadioButton, Surface, Text, TextInput, useTheme } from 'react-native-paper';
+import { SplitExpense, getGroupDetails, getSplitExpensesByGroupId, settleDebtWithWallet, updateSplitExpense } from '../firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 
 const SPLIT_METHODS = [

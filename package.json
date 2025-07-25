@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "dev": "EXPO_NO_TELEMETRY=1 expo start"
   },
   "dependencies": {
     "@expo/metro-config": "^0.20.17",

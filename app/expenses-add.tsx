@@ -1,43 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import { View, Alert, ScrollView, Platform, TouchableOpacity, Image } from 'react-native';
-import { Surface, Text, TextInput, Button, useTheme, HelperText, Switch, ActivityIndicator, Divider, Card, Appbar, Snackbar } from 'react-native-paper';
-import RNPickerSelect from 'react-native-picker-select';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { getGroupsForUser, addExpense, createSplitExpense, getFriends } from '../firebase/firestore';
-import { useAuth } from '../hooks/useAuth';
-import { SUPPORTED_CURRENCIES } from '../constants/types';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { ScrollView as RNScrollView } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { storage } from '../firebase/config';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Buffer } from 'buffer';
 import { manipulateAsync } from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { DollarSign, Repeat, Split, Users } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Dimensions, Image, ScrollView as RNScrollView, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Button, Card, Divider, HelperText, Snackbar, Surface, Switch, Text, TextInput, useTheme } from 'react-native-paper';
+import RNPickerSelect from 'react-native-picker-select';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DesignSystem } from '../constants/DesignSystem';
+import { SUPPORTED_CURRENCIES } from '../constants/types';
+import { addExpense, createSplitExpense, getFriends, getGroupsForUser } from '../firebase/firestore';
+import { useAuth } from '../hooks/useAuth';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const recurrenceOptions = [
-  { label: 'None', value: 'none' },
-  { label: 'Daily', value: 'daily' },
-  { label: 'Weekly', value: 'weekly' },
-  { label: 'Monthly', value: 'monthly' },
-  { label: 'Yearly', value: 'yearly' },
+  { label: 'None', value: 'none', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Daily', value: 'daily', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Weekly', value: 'weekly', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Monthly', value: 'monthly', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Yearly', value: 'yearly', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
 ];
 
 const splitMethods = [
-  { label: 'Equally', value: 'equally' },
-  { label: 'By Amount', value: 'byAmount' },
-  { label: 'By Percentage', value: 'byPercentage' },
+  { label: 'Equally', value: 'equally', icon: <Split size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'By Amount', value: 'byAmount', icon: <DollarSign size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'By Percentage', value: 'byPercentage', icon: <Split size={16} color={DesignSystem.colors.neutral[500]} /> },
 ];
 
 const categories = [
-  { label: 'Food', value: 'Food' },
-  { label: 'Transport', value: 'Transport' },
-  { label: 'Shopping', value: 'Shopping' },
-  { label: 'Groceries', value: 'Groceries' },
-  { label: 'Bills', value: 'Bills' },
-  { label: 'Entertainment', value: 'Entertainment' },
-  { label: 'Other', value: 'Other' },
+  { label: 'Food', value: 'Food', icon: <MaterialCommunityIcons name="food" size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Transport', value: 'Transport', icon: <MaterialCommunityIcons name="car" size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Shopping', value: 'Shopping', icon: <MaterialCommunityIcons name="shopping" size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Groceries', value: 'Groceries', icon: <MaterialCommunityIcons name="cart" size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Bills', value: 'Bills', icon: <MaterialCommunityIcons name="receipt" size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Entertainment', value: 'Entertainment', icon: <MaterialCommunityIcons name="movie" size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Other', value: 'Other', icon: <MaterialCommunityIcons name="dots-horizontal" size={16} color={DesignSystem.colors.neutral[500]} /> },
 ];
 
 // Utility to remove undefined fields
@@ -53,6 +54,28 @@ function removeUndefined(obj: any): any {
   }
   return obj;
 }
+
+const pickerSelectStyles = {
+  inputIOS: {
+    fontSize: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    color: DesignSystem.colors.neutral[900],
+    paddingRight: 30, // to ensure the text is never behind the icon
+  },
+  inputAndroid: {
+    fontSize: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 16,
+    color: DesignSystem.colors.neutral[900],
+    paddingRight: 30, // to ensure the text is never behind the icon
+  },
+  placeholder: {
+    color: DesignSystem.colors.neutral[400],
+  },
+};
 
 export default function AddExpensesScreen() {
   const { authUser, userProfile, loading: authLoading } = useAuth();
@@ -93,6 +116,7 @@ export default function AddExpensesScreen() {
   const [currencyError, setCurrencyError] = useState('');
   const [dateError, setDateError] = useState('');
   const [formError, setFormError] = useState('');
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const fetchGroupsAndFriends = async () => {
@@ -358,35 +382,20 @@ export default function AddExpensesScreen() {
     );
   }
 
-  const pickerSelectStyles = {
-    inputIOS: {
-      fontSize: 16,
-      paddingVertical: 12,
-      paddingHorizontal: 10,
-      borderWidth: 1,
-      borderColor: colors.outline,
-      borderRadius: 8,
-      color: colors.onSurface,
-      paddingRight: 30, // to ensure the icon has space
-    },
-    inputAndroid: {
-      fontSize: 16,
-      paddingVertical: 12,
-      paddingHorizontal: 10,
-      borderWidth: 1,
-      borderColor: colors.outline,
-      borderRadius: 8,
-      color: colors.onSurface,
-      paddingRight: 30, // to ensure the icon has space
-    },
-    placeholder: {
-      color: colors.onSurfaceVariant,
-    },
-    iconContainer: {
-      top: 10,
-      right: 10,
-    },
-  };
+  const currencyOptions = SUPPORTED_CURRENCIES.map(c => ({
+    label: `${c.code} - ${c.name}`,
+    value: c.code,
+    icon: <DollarSign size={16} color={DesignSystem.colors.neutral[500]} />,
+  }));
+
+  const groupOptions = [
+    { label: 'Personal', value: '', icon: <Users size={16} color={DesignSystem.colors.neutral[500]} /> },
+    ...groups.map(g => ({ 
+      label: g.name, 
+      value: g.id,
+      icon: <Users size={16} color={DesignSystem.colors.neutral[500]} />
+    }))
+  ];
 
   return (
     <Surface style={{ flex: 1, backgroundColor: colors.background }}>
