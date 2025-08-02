@@ -9,6 +9,7 @@ export const AuthContext = createContext<{
   userProfile: any;
   loading: boolean;
   refetchUserProfile: (uid?: string) => Promise<void>;
+  refetchAuthUser: () => Promise<void>;
 } | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -27,6 +28,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUserProfile(profile);
     } catch (error) {
       console.error('Error fetching user profile:', error);
+    }
+  }, [authUser]);
+
+  const refetchAuthUser = useCallback(async () => {
+    if (!authUser) return;
+    try {
+      await authUser.reload();
+      setAuthUser(auth.currentUser);
+    } catch (error) {
+      console.error('Error refetching auth user:', error);
     }
   }, [authUser]);
 
@@ -79,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const contextValue = { authUser, userProfile, loading, refetchUserProfile };
+  const contextValue = { authUser, userProfile, loading, refetchUserProfile, refetchAuthUser };
   
   return (
     <AuthContext.Provider value={contextValue}>

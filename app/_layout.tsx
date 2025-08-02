@@ -20,6 +20,7 @@ function Main() {
           headerShown: false, // 👈 Hide for all screens
         }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="verify-email" options={{ headerShown: false }} />
             <Stack.Screen name="groups-detail" options={{ headerShown: false }} />
             <Stack.Screen name="expenses-edit" options={{ headerShown: false }} />
             <Stack.Screen name="expenses-add" options={{ headerShown: false }} />

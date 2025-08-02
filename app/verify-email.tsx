@@ -23,10 +23,13 @@ export default function VerifyEmailScreen() {
       router.replace('/login');
       return;
     }
-    const interval = setInterval(async () => {
-      await refetchAuthUser();
-    }, 5000);
-    return () => clearInterval(interval);
+    // Only set up the interval if user exists but is not verified
+    if (authUser && !authUser.emailVerified) {
+      const interval = setInterval(async () => {
+        await refetchAuthUser();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
   }, [loading, authUser, router, refetchAuthUser]);
 
   const handleResend = async () => {
@@ -47,8 +50,16 @@ export default function VerifyEmailScreen() {
     router.push('/login');
   };
 
-  if (loading || !authUser || authUser.emailVerified) {
+  if (loading) {
     return <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator animating color={colors.primary} size="large" /><Text>Loading...</Text></Surface>;
+  }
+  
+  if (!authUser) {
+    return <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator animating color={colors.primary} size="large" /><Text>Redirecting...</Text></Surface>;
+  }
+  
+  if (authUser.emailVerified) {
+    return <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator animating color={colors.primary} size="large" /><Text>Redirecting...</Text></Surface>;
   }
 
   return (

@@ -12,9 +12,12 @@ export default function HomeTab() {
     if (!loading && !authUser) {
       router.replace('/login');
     }
+    if (!loading && authUser && !authUser.emailVerified) {
+      router.replace('/verify-email');
+    }
   }, [authUser, loading]);
 
-  if (loading || !authUser) {
+  if (loading || !authUser || (authUser && !authUser.emailVerified)) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator />

@@ -106,7 +106,6 @@ export default function LoginScreen() {
       await userCredential.user.reload();
       if (!userCredential.user.emailVerified) {
         setSnackbar({ visible: true, message: 'Please verify your email before logging in.', color: 'orange' });
-        await auth.signOut();
         router.replace('/verify-email');
         setLoading(false);
         return;
