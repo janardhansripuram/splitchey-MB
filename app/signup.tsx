@@ -2,26 +2,26 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword, sendEmailVerification, signInWithPhoneNumber } from 'firebase/auth';
-import { DollarSign, Eye, EyeOff, Gift, Lock, Mail, MessageSquare, Phone, User } from 'lucide-react-native';
+import { Eye, EyeOff, Gift, Lock, Mail, MessageSquare, Phone, User } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
 import { Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Snackbar, Text, useTheme } from 'react-native-paper';
+import { Modal, Portal, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModernButton } from '../components/ui/ModernButton';
 import { ModernCard } from '../components/ui/ModernCard';
-import { ModernDropdown } from '../components/ui/ModernDropdown';
 import { ModernInput } from '../components/ui/ModernInput';
 import { DesignSystem } from '../constants/DesignSystem';
+import { SUPPORTED_CURRENCIES } from '../constants/types'; // Assuming you have a list of supported currencies
 import { auth } from '../firebase/config';
 import { createUserProfile } from '../firebase/firestore';
 
-const SUPPORTED_CURRENCIES = [
-  { code: 'USD', name: 'US Dollar' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'MYR', name: 'Malaysian Ringgit' },
-  // Add more as needed
-];
+// const SUPPORTED_CURRENCIES = [
+//   { code: 'USD', name: 'US Dollar' },
+//   { code: 'EUR', name: 'Euro' },
+//   { code: 'MYR', name: 'Malaysian Ringgit' },
+//   // Add more as needed
+// ];
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_WIDTH = SCREEN_WIDTH > 440 ? 400 : SCREEN_WIDTH - 32;
@@ -30,7 +30,7 @@ export default function SignupScreen() {
   const [tab, setTab] = useState<'email' | 'phone'>('email');
   // Common fields
   const [displayName, setDisplayName] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('INR');
   const [currencyModal, setCurrencyModal] = useState(false);
   const [referralCode, setReferralCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -95,16 +95,11 @@ export default function SignupScreen() {
     setLoading(false);
   };
 
-  const currencyOptions = SUPPORTED_CURRENCIES.map(c => ({
-    label: `${c.code} - ${c.name}`,
-    value: c.code,
-    icon: <DollarSign size={16} color={DesignSystem.colors.neutral[500]} />,
-  }));
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: DesignSystem.colors.primary[500],
+      backgroundColor: colors.background,
     },
     backgroundGradient: {
       position: 'absolute',
@@ -112,16 +107,16 @@ export default function SignupScreen() {
       left: 0,
       right: 0,
       height: '60%',
-      backgroundColor: DesignSystem.colors.primary[500],
+      backgroundColor: colors.primary,
     },
     content: {
       flex: 1,
-      paddingHorizontal: DesignSystem.spacing[6],
+      // paddingHorizontal: DesignSystem.spacing[4], // Add horizontal padding
       paddingTop: insets.top + DesignSystem.spacing[8],
     },
     header: {
       alignItems: 'center',
-      marginBottom: DesignSystem.spacing[8],
+      marginBottom: DesignSystem.spacing[10],
     },
     logo: {
       width: 80,
@@ -131,36 +126,41 @@ export default function SignupScreen() {
     },
     appName: {
       fontSize: DesignSystem.typography.fontSizes['3xl'],
-      fontWeight: DesignSystem.typography.fontWeights.bold,
-      color: '#ffffff',
+      fontWeight: 'bold',
+      color: colors.onPrimary,
       marginBottom: DesignSystem.spacing[2],
     },
     tagline: {
       fontSize: DesignSystem.typography.fontSizes.lg,
-      color: 'rgba(255, 255, 255, 0.9)',
+      color: colors.onPrimary,
       textAlign: 'center',
     },
     formCard: {
       width: '100%',
       maxWidth: 400,
       alignSelf: 'center',
+      paddingHorizontal: DesignSystem.spacing[6], // Adjusted horizontal padding for better spacing
+      paddingVertical: DesignSystem.spacing[8], // Adjusted vertical padding
+     // marginRight: DesignSystem.spacing[16],
+     // marginLeft: DesignSystem.spacing[4],
     },
     welcomeText: {
       fontSize: DesignSystem.typography.fontSizes['2xl'],
-      fontWeight: DesignSystem.typography.fontWeights.bold,
-      color: DesignSystem.colors.neutral[900],
+      fontWeight: 'bold',
+      color: colors.onSurface,
       textAlign: 'center',
-      marginBottom: DesignSystem.spacing[2],
+      marginBottom: DesignSystem.spacing[4],
     },
-    subtitleText: {
-      fontSize: DesignSystem.typography.fontSizes.base,
-      color: DesignSystem.colors.neutral[600],
-      textAlign: 'center',
-      marginBottom: DesignSystem.spacing[8],
-    },
+   subtitleText: {
+        fontSize: DesignSystem.typography.fontSizes.base,
+        color: colors.surface,
+        textAlign: 'center',
+        marginBottom: DesignSystem.spacing[8],
+       // paddingHorizontal: DesignSystem.spacing[4]
+      },
     tabContainer: {
       flexDirection: 'row',
-      backgroundColor: DesignSystem.colors.neutral[100],
+      backgroundColor: dark ? colors.surfaceVariant : colors.surfaceDisabled,
       borderRadius: DesignSystem.borderRadius.md,
       padding: DesignSystem.spacing[1],
       marginBottom: DesignSystem.spacing[6],
@@ -172,18 +172,18 @@ export default function SignupScreen() {
       alignItems: 'center',
     },
     activeTab: {
-      backgroundColor: '#ffffff',
+      backgroundColor: dark ? colors.surface : colors.surface,
       ...DesignSystem.shadows.sm,
     },
     tabText: {
       fontSize: DesignSystem.typography.fontSizes.base,
-      fontWeight: DesignSystem.typography.fontWeights.medium,
+      fontWeight: 'medium',
     },
     activeTabText: {
-      color: DesignSystem.colors.primary[600],
+      color: colors.primary,
     },
     inactiveTabText: {
-      color: DesignSystem.colors.neutral[600],
+      color: colors.onSurfaceVariant,
     },
     divider: {
       flexDirection: 'row',
@@ -193,58 +193,63 @@ export default function SignupScreen() {
     dividerLine: {
       flex: 1,
       height: 1,
-      backgroundColor: DesignSystem.colors.neutral[200],
+      backgroundColor: colors.outlineVariant,
     },
     dividerText: {
       marginHorizontal: DesignSystem.spacing[4],
       fontSize: DesignSystem.typography.fontSizes.sm,
-      fontWeight: DesignSystem.typography.fontWeights.medium,
-      color: DesignSystem.colors.neutral[500],
+      fontWeight: 'medium',
+      color: colors.onSurfaceVariant,
     },
     socialButton: {
       marginBottom: DesignSystem.spacing[3],
     },
+    facebookButton: {
+      marginBottom: DesignSystem.spacing[3],
+      backgroundColor: '#1877F2',
+    },
     bottomText: {
       textAlign: 'center',
-      marginTop: DesignSystem.spacing[6],
+     // marginTop: DesignSystem.spacing[4],
       fontSize: DesignSystem.typography.fontSizes.base,
-      color: DesignSystem.colors.neutral[600],
+      color: colors.onSurfaceVariant,
     },
     linkText: {
-      color: DesignSystem.colors.primary[600],
-      fontWeight: DesignSystem.typography.fontWeights.semibold,
+      color: colors.primary,
+      fontWeight: 'semibold'
     },
   });
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={DesignSystem.colors.primary[500]} />
+      <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       
       {/* Background Gradient */}
       <View style={styles.backgroundGradient} />
       
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center', flex: 1 }}>
-        <ScrollView 
-          contentContainerStyle={{ flexGrow: 1 }} 
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: insets.bottom + DesignSystem.spacing[8] }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.content}>
             {/* Header */}
             <Animated.View entering={FadeInUp.delay(200)} style={styles.header}>
-              <Image 
-                source={require('../assets/images/icon.png')} 
+              <Image
+                source={require('../assets/images/icon.png')}
                 style={styles.logo}
               />
               <Text style={styles.appName}>SplitChey</Text>
-              <Text style={styles.tagline}>Join thousands managing expenses smarter</Text>
+              <Text style={styles.tagline}>Smart expense splitting made simple</Text>
             </Animated.View>
 
             {/* Signup Form */}
             <Animated.View entering={FadeInDown.delay(400)}>
               <ModernCard style={styles.formCard} variant="elevated">
                 <Text style={styles.welcomeText}>Create Account</Text>
-                <Text style={styles.subtitleText}>Start your journey to smarter expense management</Text>
+
+                {/* <Text style={styles.subtitleText}>Start your journey to smarter expense management</Text> */}
 
                 {/* Tab Selector */}
                 <View style={styles.tabContainer}>
@@ -274,7 +279,7 @@ export default function SignupScreen() {
                       placeholder="Enter your full name"
                       value={displayName}
                       onChangeText={setDisplayName}
-                      leftIcon={<User size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<User size={20} color={colors.onSurfaceVariant} />}
                     />
                     
                     <ModernInput
@@ -283,7 +288,7 @@ export default function SignupScreen() {
                       value={email}
                       onChangeText={setEmail}
                       keyboardType="email-address"
-                      leftIcon={<Mail size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Mail size={20} color={colors.onSurfaceVariant} />}
                     />
                     
                     <ModernInput
@@ -292,29 +297,34 @@ export default function SignupScreen() {
                       value={password}
                       onChangeText={setPassword}
                       secureTextEntry={!showPassword}
-                      leftIcon={<Lock size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Lock size={20} color={colors.onSurfaceVariant} />}
                       rightIcon={
-                        showPassword ? 
-                          <EyeOff size={20} color={DesignSystem.colors.neutral[500]} /> :
-                          <Eye size={20} color={DesignSystem.colors.neutral[500]} />
+                        showPassword ?
+                          <EyeOff size={20} color={colors.onSurfaceVariant} /> :
+                          <Eye size={20} color={colors.onSurfaceVariant} />
                       }
                       onRightIconPress={() => setShowPassword(!showPassword)}
                     />
 
-                    <ModernDropdown
-                      label="Default Currency"
-                      placeholder="Select your currency"
-                      options={currencyOptions}
-                      value={currency}
-                      onSelect={setCurrency}
-                    />
+                    <TouchableOpacity onPress={() => setCurrencyModal(true)} activeOpacity={0.7}>
+                      <TextInput
+                        label="Default Currency"
+                        value={currency}
+                        editable={false}
+                        style={{ borderRadius: 16, backgroundColor: colors.surface, marginBottom: 8 }}
+                        mode="outlined"
+                        left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="currency-inr" size={22} color={colors.onSurfaceVariant} />} />}
+                        right={<TextInput.Icon icon="chevron-down" />}
+                        pointerEvents="none"
+                      />
+                    </TouchableOpacity>
 
                     <ModernInput
                       label="Referral Code (Optional)"
                       placeholder="Enter referral code if you have one"
                       value={referralCode}
                       onChangeText={setReferralCode}
-                      leftIcon={<Gift size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Gift size={20} color={colors.onSurfaceVariant} />}
                     />
 
                     <ModernButton
@@ -335,7 +345,7 @@ export default function SignupScreen() {
                       placeholder="Enter your full name"
                       value={displayName}
                       onChangeText={setDisplayName}
-                      leftIcon={<User size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<User size={20} color={colors.onSurfaceVariant} />}
                     />
                     
                     <ModernInput
@@ -344,23 +354,27 @@ export default function SignupScreen() {
                       value={phone}
                       onChangeText={setPhone}
                       keyboardType="phone-pad"
-                      leftIcon={<Phone size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Phone size={20} color={colors.onSurfaceVariant} />}
                     />
 
-                    <ModernDropdown
-                      label="Default Currency"
-                      placeholder="Select your currency"
-                      options={currencyOptions}
-                      value={currency}
-                      onSelect={setCurrency}
-                    />
+                    <TouchableOpacity onPress={() => setCurrencyModal(true)} activeOpacity={0.7}>
+                      <ModernInput
+                        label="Default Currency"
+                        value={currency}
+                        editable={false}
+                        mode="outlined"
+                        left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="currency-usd" size={22} color={colors.primary} />} />}
+                        right={<TextInput.Icon icon="chevron-down" />}
+                        pointerEvents="none"
+                      />
+                    </TouchableOpacity>
 
                     <ModernInput
                       label="Referral Code (Optional)"
                       placeholder="Enter referral code if you have one"
                       value={referralCode}
                       onChangeText={setReferralCode}
-                      leftIcon={<Gift size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Gift size={20} color={colors.onSurfaceVariant} />}
                     />
 
                     {!otpStep ? (
@@ -379,7 +393,7 @@ export default function SignupScreen() {
                           value={otp}
                           onChangeText={setOtp}
                           keyboardType="number-pad"
-                          leftIcon={<MessageSquare size={20} color={DesignSystem.colors.neutral[500]} />}
+                          leftIcon={<MessageSquare size={20} color={colors.onSurfaceVariant} />}
                           maxLength={6}
                         />
                         
@@ -410,7 +424,7 @@ export default function SignupScreen() {
                   disabled={loading}
                   fullWidth
                   style={styles.socialButton}
-                  icon={<MaterialCommunityIcons name="google" size={20} color={DesignSystem.colors.neutral[700]} />}
+                  icon={<MaterialCommunityIcons name="google" size={20} color={colors.onSurfaceVariant} />}
                 />
 
                 <ModernButton
@@ -418,17 +432,21 @@ export default function SignupScreen() {
                   onPress={() => {}}
                   disabled={loading}
                   fullWidth
-                  style={[styles.socialButton, { backgroundColor: '#1877F2' }]}
+                  style={styles.facebookButton}
                   icon={<MaterialCommunityIcons name="facebook" size={20} color="#ffffff" />}
                 />
 
                 {/* Bottom Link */}
-                <Text style={styles.bottomText}>
-                  Already have an account?{' '}
-                  <TouchableOpacity onPress={() => router.push('/login')}>
-                    <Text style={styles.linkText}>Sign in</Text>
-                  </TouchableOpacity>
-                </Text>
+               <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
+  <Text style={styles.bottomText}>Already have an account?</Text>
+  <TouchableOpacity 
+    onPress={() => router.push('/login')} 
+    style={{ marginLeft: DesignSystem.spacing[1] }}
+  >
+    <Text style={styles.linkText}>Sign in</Text>
+  </TouchableOpacity>
+</View>
+                
               </ModernCard>
             </Animated.View>
           </View>
@@ -444,16 +462,55 @@ export default function SignupScreen() {
         visible={snackbar.visible}
         onDismiss={() => setSnackbar({ visible: false, message: '', color: '' })}
         duration={2500}
-        style={{ 
-          backgroundColor: snackbar.color === 'red' ? DesignSystem.colors.error[500] : 
+        style={{
+          backgroundColor: snackbar.color === 'red' ? colors.error :
                           snackbar.color === 'green' ? DesignSystem.colors.success[500] :
-                          DesignSystem.colors.primary[500],
+                          colors.primary,
           borderRadius: DesignSystem.borderRadius.md,
           margin: DesignSystem.spacing[4],
         }}
       >
         {snackbar.message}
       </Snackbar>
+
+      <Portal>
+        <Modal
+          visible={currencyModal}
+          onDismiss={() => setCurrencyModal(false)}
+          contentContainerStyle={{
+            margin: 24,
+            padding: 16,
+            backgroundColor: colors.surface,
+            borderRadius: 18,
+          }}
+        >
+          <Text style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 12, color: colors.primary }}>Select Currency</Text>
+          {SUPPORTED_CURRENCIES.map(c => (
+            <TouchableOpacity
+              key={c.code}
+              style={{
+                paddingVertical: 12,
+                paddingHorizontal: 8,
+                borderRadius: 12,
+                backgroundColor: c.code === currency ? colors.primaryContainer : 'transparent',
+                marginBottom: 2,
+              }}
+              onPress={() => {
+                setCurrency(c.code);
+                setCurrencyModal(false);
+              }}
+            >
+              <Text style={{
+                fontSize: 16,
+                color: c.code === currency ? colors.primary : colors.onSurface,
+                fontWeight: c.code === currency ? 'bold' : 'normal'
+              }}>
+                {c.code} - {c.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </Modal>
+      </Portal>
     </View>
   );
-} 
+}

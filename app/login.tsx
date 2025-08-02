@@ -17,6 +17,7 @@ import { ModernCard } from '../components/ui/ModernCard';
 import { ModernInput } from '../components/ui/ModernInput';
 import { DesignSystem } from '../constants/DesignSystem';
 import { auth } from '../firebase/config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -38,6 +39,17 @@ export default function LoginScreen() {
   const { colors, dark } = useTheme();
   const insets = useSafeAreaInsets();
   const [showPassword, setShowPassword] = useState(false);
+
+  // Debug function to reset onboarding
+  const resetOnboarding = async () => {
+    try {
+      await AsyncStorage.removeItem('onboarding_completed');
+      console.log('Onboarding reset successfully');
+      router.replace('/');
+    } catch (error) {
+      console.error('Error resetting onboarding:', error);
+    }
+  };
 
   // Google Auth
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -135,7 +147,7 @@ export default function LoginScreen() {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: DesignSystem.colors.primary[500],
+      backgroundColor: colors.background,
     },
     backgroundGradient: {
       position: 'absolute',
@@ -143,11 +155,11 @@ export default function LoginScreen() {
       left: 0,
       right: 0,
       height: '60%',
-      backgroundColor: DesignSystem.colors.primary[500],
+      backgroundColor: colors.primary,
     },
     content: {
       flex: 1,
-      paddingHorizontal: DesignSystem.spacing[6],
+     // paddingHorizontal: DesignSystem.spacing[8], // Reduced horizontal padding
       paddingTop: insets.top + DesignSystem.spacing[8],
     },
     header: {
@@ -162,36 +174,38 @@ export default function LoginScreen() {
     },
     appName: {
       fontSize: DesignSystem.typography.fontSizes['3xl'],
-      fontWeight: DesignSystem.typography.fontWeights.bold,
-      color: '#ffffff',
+      fontWeight: 'bold',
+      color: colors.onPrimary,
       marginBottom: DesignSystem.spacing[2],
     },
     tagline: {
       fontSize: DesignSystem.typography.fontSizes.lg,
-      color: 'rgba(255, 255, 255, 0.9)',
+      color: colors.onPrimaryContainer,
       textAlign: 'center',
     },
     formCard: {
       width: '100%',
       maxWidth: 400,
       alignSelf: 'center',
+      paddingHorizontal: DesignSystem.spacing[6], // Adjusted horizontal padding for better spacing
+      paddingVertical: DesignSystem.spacing[8], // Adjusted vertical padding
     },
     welcomeText: {
       fontSize: DesignSystem.typography.fontSizes['2xl'],
-      fontWeight: DesignSystem.typography.fontWeights.bold,
-      color: DesignSystem.colors.neutral[900],
+      fontWeight: 'bold',
+      color: colors.onSurface,
       textAlign: 'center',
       marginBottom: DesignSystem.spacing[2],
     },
     subtitleText: {
       fontSize: DesignSystem.typography.fontSizes.base,
-      color: DesignSystem.colors.neutral[600],
+      color: colors.onSurfaceVariant,
       textAlign: 'center',
       marginBottom: DesignSystem.spacing[8],
     },
     tabContainer: {
       flexDirection: 'row',
-      backgroundColor: DesignSystem.colors.neutral[100],
+      backgroundColor: dark ? colors.surfaceVariant : colors.surfaceDisabled,
       borderRadius: DesignSystem.borderRadius.md,
       padding: DesignSystem.spacing[1],
       marginBottom: DesignSystem.spacing[6],
@@ -203,18 +217,18 @@ export default function LoginScreen() {
       alignItems: 'center',
     },
     activeTab: {
-      backgroundColor: '#ffffff',
+      backgroundColor: dark ? colors.surface : colors.surface,
       ...DesignSystem.shadows.sm,
     },
     tabText: {
       fontSize: DesignSystem.typography.fontSizes.base,
-      fontWeight: DesignSystem.typography.fontWeights.medium,
+      fontWeight: 'medium',
     },
     activeTabText: {
-      color: DesignSystem.colors.primary[600],
+      color: colors.primary,
     },
     inactiveTabText: {
-      color: DesignSystem.colors.neutral[600],
+      color: colors.onSurfaceVariant,
     },
     divider: {
       flexDirection: 'row',
@@ -224,47 +238,47 @@ export default function LoginScreen() {
     dividerLine: {
       flex: 1,
       height: 1,
-      backgroundColor: DesignSystem.colors.neutral[200],
+      backgroundColor: colors.outlineVariant,
     },
     dividerText: {
       marginHorizontal: DesignSystem.spacing[4],
       fontSize: DesignSystem.typography.fontSizes.sm,
-      fontWeight: DesignSystem.typography.fontWeights.medium,
-      color: DesignSystem.colors.neutral[500],
+      fontWeight: 'medium',
+      color: colors.onSurfaceVariant,
     },
     socialButton: {
       marginBottom: DesignSystem.spacing[3],
     },
-    bottomText: {
-      textAlign: 'center',
-      marginTop: DesignSystem.spacing[6],
-      fontSize: DesignSystem.typography.fontSizes.base,
-      color: DesignSystem.colors.neutral[600],
-    },
-    linkText: {
-      color: DesignSystem.colors.primary[600],
-      fontWeight: DesignSystem.typography.fontWeights.semibold,
-    },
+     bottomText: {
+        textAlign: 'center',
+       // marginTop: DesignSystem.spacing[4],
+        fontSize: DesignSystem.typography.fontSizes.base,
+        color: colors.onSurfaceVariant,
+      },
+      linkText: {
+        color: colors.primary,
+        fontWeight: 'semibold'
+      },
   });
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={DesignSystem.colors.primary[500]} />
+      <StatusBar barStyle={dark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
       
       {/* Background Gradient */}
       <View style={styles.backgroundGradient} />
       
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center', flex: 1 }}>
-        <ScrollView 
-          contentContainerStyle={{ flexGrow: 1 }} 
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: insets.bottom + DesignSystem.spacing[8] }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.content}>
             {/* Header */}
             <Animated.View entering={FadeInUp.delay(200)} style={styles.header}>
-              <Image 
-                source={require('../assets/images/icon.png')} 
+              <Image
+                source={require('../assets/images/icon.png')}
                 style={styles.logo}
               />
               <Text style={styles.appName}>SplitChey</Text>
@@ -306,7 +320,7 @@ export default function LoginScreen() {
                       value={email}
                       onChangeText={setEmail}
                       keyboardType="email-address"
-                      leftIcon={<Mail size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Mail size={20} color={colors.onSurfaceVariant} />}
                     />
                     
                     <ModernInput
@@ -315,11 +329,11 @@ export default function LoginScreen() {
                       value={password}
                       onChangeText={setPassword}
                       secureTextEntry={!showPassword}
-                      leftIcon={<Lock size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Lock size={20} color={colors.onSurfaceVariant} />}
                       rightIcon={
-                        showPassword ? 
-                          <EyeOff size={20} color={DesignSystem.colors.neutral[500]} /> :
-                          <Eye size={20} color={DesignSystem.colors.neutral[500]} />
+                        showPassword ?
+                          <EyeOff size={20} color={colors.onSurfaceVariant} /> :
+                          <Eye size={20} color={colors.onSurfaceVariant} />
                       }
                       onRightIconPress={() => setShowPassword(!showPassword)}
                     />
@@ -343,100 +357,119 @@ export default function LoginScreen() {
                       value={phone}
                       onChangeText={setPhone}
                       keyboardType="phone-pad"
-                      leftIcon={<Phone size={20} color={DesignSystem.colors.neutral[500]} />}
+                      leftIcon={<Phone size={20} color={colors.onSurfaceVariant} />}
                     />
-
-                    {!otpStep ? (
-                      <ModernButton
-                        title="Send Verification Code"
-                        onPress={handleSendCode}
-                        loading={loading}
-                        fullWidth
-                        style={{ marginTop: DesignSystem.spacing[2] }}
-                      />
-                    ) : (
-                      <>
-                        <ModernInput
-                          label="Verification Code"
-                          placeholder="Enter 6-digit code"
-                          value={otp}
-                          onChangeText={setOtp}
-                          keyboardType="number-pad"
-                          leftIcon={<MessageSquare size={20} color={DesignSystem.colors.neutral[500]} />}
-                          maxLength={6}
-                        />
-                        
-                        <ModernButton
-                          title="Verify & Sign In"
-                          onPress={handleVerifyCode}
-                          loading={loading}
-                          fullWidth
-                          style={{ marginTop: DesignSystem.spacing[2] }}
-                        />
-                      </>
-                    )}
-                  </Animated.View>
-                )}
-
-                {/* Divider */}
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                {/* Social Login Buttons */}
-                <ModernButton
-                  title="Continue with Google"
-                  onPress={() => promptAsync()}
-                  variant="outline"
-                  disabled={!request || loading}
-                  fullWidth
-                  style={styles.socialButton}
-                  icon={<MaterialCommunityIcons name="google" size={20} color={DesignSystem.colors.neutral[700]} />}
-                />
-
-                <ModernButton
-                  title="Continue with Facebook"
-                  onPress={() => fbPromptAsync()}
-                  disabled={!fbRequest || loading}
-                  fullWidth
-                  style={[styles.socialButton, { backgroundColor: '#1877F2' }]}
-                  icon={<MaterialCommunityIcons name="facebook" size={20} color="#ffffff" />}
-                />
-
-                {/* Bottom Link */}
-                <Text style={styles.bottomText}>
-                  Don't have an account?{' '}
-                  <TouchableOpacity onPress={() => router.push('/signup')}>
-                    <Text style={styles.linkText}>Sign up</Text>
-                  </TouchableOpacity>
-                </Text>
-              </ModernCard>
-            </Animated.View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-      
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={auth.app.options}
-      />
-      
-      <Snackbar
-        visible={snackbar.visible}
-        onDismiss={() => setSnackbar({ visible: false, message: '', color: '' })}
-        duration={2500}
-        style={{ 
-          backgroundColor: snackbar.color === 'red' ? DesignSystem.colors.error[500] : 
-                          snackbar.color === 'green' ? DesignSystem.colors.success[500] :
-                          DesignSystem.colors.primary[500],
-          borderRadius: DesignSystem.borderRadius.md,
-          margin: DesignSystem.spacing[4],
-        }}
-      >
-        {snackbar.message}
-      </Snackbar>
-    </View>
-  );
-} 
+ 
+                     {!otpStep ? (
+                       <ModernButton
+                         title="Send Verification Code"
+                         onPress={handleSendCode}
+                         loading={loading}
+                         fullWidth
+                         style={{ marginTop: DesignSystem.spacing[2] }}
+                       />
+                     ) : (
+                       <>
+                         <ModernInput
+                           label="Verification Code"
+                           placeholder="Enter 6-digit code"
+                           value={otp}
+                           onChangeText={setOtp}
+                           keyboardType="number-pad"
+                           leftIcon={<MessageSquare size={20} color={colors.onSurfaceVariant} />}
+                           maxLength={6}
+                         />
+                         
+                         <ModernButton
+                           title="Verify & Sign In"
+                           onPress={handleVerifyCode}
+                           loading={loading}
+                           fullWidth
+                           style={{ marginTop: DesignSystem.spacing[2] }}
+                         />
+                       </>
+                     )}
+                   </Animated.View>
+                 )}
+ 
+                 {/* Divider */}
+                 <View style={styles.divider}>
+                   <View style={styles.dividerLine} />
+                   <Text style={styles.dividerText}>OR CONTINUE WITH</Text>
+                   <View style={styles.dividerLine} />
+                 </View>
+ 
+                 {/* Social Login Buttons */}
+                 <ModernButton
+                   title="Continue with Google"
+                   onPress={() => promptAsync()}
+                   variant="outline"
+                   disabled={!request || loading}
+                   fullWidth
+                   style={styles.socialButton}
+                   icon={<MaterialCommunityIcons name="google" size={20} color={colors.onSurfaceVariant} />}
+                 />
+ 
+                 <ModernButton
+                   title="Continue with Facebook"
+                   onPress={() => fbPromptAsync()}
+                   disabled={!fbRequest || loading}
+                   fullWidth
+                   style={[styles.socialButton, { backgroundColor: '#1877F2' }]}
+                   icon={<MaterialCommunityIcons name="facebook" size={20} color="#ffffff" />}
+                 />
+ 
+                 {/* Bottom Link */}
+                
+                 <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}>
+  <Text style={styles.bottomText}>Don't have an account?</Text>
+  <TouchableOpacity 
+    onPress={() => router.push('/signup')} 
+    style={{ marginLeft: DesignSystem.spacing[1] }}
+  >
+    <Text style={styles.linkText}>Sign up</Text>
+  </TouchableOpacity>
+</View>
+               </ModernCard>
+             </Animated.View>
+           </View>
+         </ScrollView>
+       </KeyboardAvoidingView>
+       
+       <FirebaseRecaptchaVerifierModal
+         ref={recaptchaVerifier}
+         firebaseConfig={auth.app.options}
+       />
+       
+       {/* Debug button for testing onboarding */}
+       <TouchableOpacity 
+         style={{
+           position: 'absolute',
+           bottom: 20,
+           left: 20,
+           backgroundColor: colors.error,
+           padding: 12,
+           borderRadius: 8,
+         }}
+         onPress={resetOnboarding}
+       >
+         <Text style={{ color: '#fff', fontSize: 12 }}>Reset Onboarding</Text>
+       </TouchableOpacity>
+       
+       <Snackbar
+         visible={snackbar.visible}
+         onDismiss={() => setSnackbar({ visible: false, message: '', color: '' })}
+         duration={2500}
+         style={{
+           backgroundColor: snackbar.color === 'red' ? colors.error :
+                           snackbar.color === 'green' ? colors.tertiary :
+                           colors.primary,
+           borderRadius: DesignSystem.borderRadius.md,
+           margin: DesignSystem.spacing[4],
+         }}
+       >
+         {snackbar.message}
+       </Snackbar>
+     </View>
+   );
+ }

@@ -1,19 +1,19 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import BottomSheet, { useBottomSheetModal } from '@gorhom/bottom-sheet';
 import { format } from 'date-fns';
 import * as ImagePicker from 'expo-image-picker';
 import * as Notifications from 'expo-notifications';
 import { EmailAuthProvider, deleteUser, reauthenticateWithCredential, signOut, updateEmail, updatePassword, updateProfile } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import { Bell, Lock, LogOut, Mail, Palette, Settings, Shield, Star, Trash2, User } from 'lucide-react-native';
-import React, { useCallback, useState } from 'react';
-import { Dimensions, Linking, RefreshControl, ScrollView, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Dimensions, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Avatar, Dialog, Divider, List, Modal, Portal, Snackbar, Surface, Switch, Text, useTheme } from 'react-native-paper';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModernButton } from '../../components/ui/ModernButton';
 import { ModernCard } from '../../components/ui/ModernCard';
 import { ModernInput } from '../../components/ui/ModernInput';
-import { DesignSystem } from '../../constants/DesignSystem';
 import { useThemeMode } from '../../contexts/ThemeContext';
 import { auth, db } from '../../firebase/config';
 import { cancelUserSubscription, updateUserProfilePhoto, upgradeUserToPremium } from '../../firebase/firestore';
@@ -69,6 +69,33 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
+  // Use BottomSheetModal with proper context
+  const bottomSheetModalRef = useRef<BottomSheet>(null);
+  const { present, dismiss } = useBottomSheetModal();
+  const editProfileSheetRef = useRef<BottomSheet>(null);
+
+  // Initialize BottomSheetModal
+  useEffect(() => {
+    if (bottomSheetModalRef.current) {
+      present(bottomSheetModalRef.current);
+    }
+    return () => {
+      dismiss();
+    };
+  }, [present, dismiss]);
+
+  // Open/close helpers for edit profile bottom sheet
+  const openEditProfile = () => {
+    setEditProfileOpen(true);
+    setTimeout(() => {
+      editProfileSheetRef.current?.expand?.();
+    }, 10);
+  };
+  const closeEditProfile = () => {
+    setEditProfileOpen(false);
+    editProfileSheetRef.current?.close?.();
+  };
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetchUserProfile();
@@ -79,7 +106,6 @@ export default function ProfileScreen() {
   const handlePickAvatar = async () => {
     setAvatarLoading(true);
     try {
-      console.log('[Avatar] Launching image picker...');
       const result = await ImagePicker.launchImageLibraryAsync({ 
         mediaTypes: ImagePicker.MediaTypeOptions.Images, 
         allowsEditing: true, 
@@ -87,7 +113,6 @@ export default function ProfileScreen() {
         quality: 0.7,
         base64: false,
       });
-      
       if (!result.canceled && result.assets && result.assets[0].uri) {
         const uri = result.assets[0].uri;
         if (!uri) {
@@ -95,19 +120,13 @@ export default function ProfileScreen() {
           setAvatarLoading(false);
           return;
         }
-        console.log('[Avatar] Uploading to Firebase Storage with URI:', uri);
         const newUrl = await updateUserProfilePhoto(authUser.uid, uri);
-        console.log('[Avatar] Firebase Storage upload complete:', newUrl);
-        // Add cache-busting param
-        const cacheBustedUrl = newUrl + '?t=' + Date.now();
-        // Refetch user profile
         await refetchUserProfile();
         setSnackbar({ visible: true, message: 'Profile photo updated!', error: false });
       } else {
         setSnackbar({ visible: true, message: 'Image selection cancelled', error: true });
       }
     } catch (e: any) {
-      console.error('[Avatar] Failed to update photo:', e);
       setSnackbar({ visible: true, message: 'Failed to update photo: ' + (e.message || e), error: true });
     }
     setAvatarLoading(false);
@@ -123,7 +142,7 @@ export default function ProfileScreen() {
       }
       await refetchUserProfile();
       setSnackbar({ visible: true, message: 'Profile updated!', error: false });
-      setEditProfileOpen(false);
+      closeEditProfile();
     } catch (e) {
       setSnackbar({ visible: true, message: 'Failed to update profile', error: true });
     }
@@ -205,24 +224,13 @@ export default function ProfileScreen() {
   const handleCancelSubscription = async () => {
     setCanceling(true);
     try {
-      
-      // Validate user exists
-      if (!authUser?.uid) {
-        throw new Error('No authenticated user found');
-      }
-      
-      // Validate user profile exists
-      if (!userProfile) {
-        throw new Error('User profile not loaded');
-      }
-      
+      if (!authUser?.uid) throw new Error('No authenticated user found');
+      if (!userProfile) throw new Error('User profile not loaded');
       await cancelUserSubscription(authUser.uid);
       await refetchUserProfile();
       setSnackbar({ visible: true, message: 'Subscription canceled. You are now on the Free plan.', error: false });
       setManageSubscriptionOpen(false);
     } catch (e: any) {
-      
-      // Provide more specific error messages
       let errorMessage = 'Failed to cancel subscription';
       if (e.code === 'permission-denied') {
         errorMessage = 'Permission denied. Please check your account status.';
@@ -231,7 +239,6 @@ export default function ProfileScreen() {
       } else if (e.message) {
         errorMessage = `Error: ${e.message}`;
       }
-      
       setSnackbar({ visible: true, message: errorMessage, error: true });
     }
     setCanceling(false);
@@ -248,8 +255,6 @@ export default function ProfileScreen() {
   // Upgrade to Premium logic
   const handleUpgrade = () => {
     setUpgradeDialog(true);
-    // If you have a payment flow, call it here
-    // e.g., router.push('/upgrade')
   };
 
   // Push notification enable (placeholder)
@@ -279,23 +284,28 @@ export default function ProfileScreen() {
     return <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" /></Surface>;
   }
 
+  // Themed background for header
+  const headerBg = dark
+    ? { backgroundColor: colors.primary, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }
+    : { backgroundColor: colors.primary, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 };
+
   return (
-    <Surface style={{ flex: 1, backgroundColor: DesignSystem.colors.neutral[50] }}>
+    <Surface style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header Section */}
       <View style={{
-        background: `linear-gradient(135deg, ${DesignSystem.colors.primary[500]} 0%, ${DesignSystem.colors.primary[600]} 100%)`,
-        backgroundColor: DesignSystem.colors.primary[500],
+        ...headerBg,
         paddingTop: insets.top + 20,
         paddingBottom: 80,
         paddingHorizontal: 20,
-        borderBottomLeftRadius: 32,
-        borderBottomRightRadius: 32,
-        ...DesignSystem.shadows.lg,
+        shadowColor: colors.primary,
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+        elevation: 6,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700' }}>Profile</Text>
-          <TouchableOpacity onPress={() => setEditProfileOpen(true)} style={{
-            backgroundColor: 'rgba(255,255,255,0.2)',
+          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700', letterSpacing: -0.5 }}>Profile</Text>
+          <TouchableOpacity onPress={openEditProfile} style={{
+            backgroundColor: 'rgba(255,255,255,0.18)',
             borderRadius: 20,
             padding: 8,
           }}>
@@ -317,10 +327,13 @@ export default function ProfileScreen() {
             size={112} 
             source={{ uri: userProfile.photoURL }} 
             style={{
-              backgroundColor: DesignSystem.colors.primary[500],
+              backgroundColor: colors.primary,
               borderWidth: 4,
-              borderColor: '#fff',
-              ...DesignSystem.shadows.lg,
+              borderColor: colors.background,
+              shadowColor: colors.primary,
+              shadowOpacity: 0.12,
+              shadowRadius: 8,
+              elevation: 4,
             }}
           />
           <TouchableOpacity 
@@ -328,21 +341,24 @@ export default function ProfileScreen() {
               position: 'absolute',
               bottom: 4,
               right: 4,
-              backgroundColor: '#fff',
+              backgroundColor: colors.background,
               borderRadius: 20,
               width: 40,
               height: 40,
               justifyContent: 'center',
               alignItems: 'center',
-              ...DesignSystem.shadows.md,
+              shadowColor: colors.primary,
+              shadowOpacity: 0.10,
+              shadowRadius: 4,
+              elevation: 2,
             }}
             onPress={handlePickAvatar}
             disabled={avatarLoading}
           >
             {avatarLoading ? (
-              <ActivityIndicator size={20} color={DesignSystem.colors.primary[500]} />
+              <ActivityIndicator size={20} color={colors.primary} />
             ) : (
-              <MaterialCommunityIcons name="camera" size={20} color={DesignSystem.colors.primary[500]} />
+              <MaterialCommunityIcons name="camera" size={20} color={colors.primary} />
             )}
           </TouchableOpacity>
         </Animated.View>
@@ -351,13 +367,13 @@ export default function ProfileScreen() {
           <Text style={{ 
             fontWeight: '700', 
             fontSize: 24, 
-            color: DesignSystem.colors.neutral[900],
+            color: colors.onBackground,
             marginBottom: 4,
           }}>
             {userProfile.displayName}
           </Text>
           <Text style={{ 
-            color: DesignSystem.colors.neutral[600], 
+            color: colors.onSurfaceVariant, 
             fontSize: 16,
           }}>
             {userProfile.email}
@@ -365,7 +381,7 @@ export default function ProfileScreen() {
         </Animated.View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -378,27 +394,27 @@ export default function ProfileScreen() {
             style={{
               marginBottom: 20,
               backgroundColor: userProfile.subscription?.plan === 'premium' 
-                ? DesignSystem.colors.primary[50] 
-                : '#fff',
+                ? colors.primaryContainer 
+                : colors.surface,
               borderWidth: userProfile.subscription?.plan === 'premium' ? 2 : 0,
               borderColor: userProfile.subscription?.plan === 'premium' 
-                ? DesignSystem.colors.primary[200] 
+                ? colors.primary 
                 : 'transparent',
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
               <View style={{
-                backgroundColor: DesignSystem.colors.warning[100],
+                backgroundColor: colors.secondaryContainer,
                 borderRadius: 12,
                 padding: 8,
                 marginRight: 12,
               }}>
-                <Star size={24} color={DesignSystem.colors.warning[600]} />
+                <Star size={24} color={colors.secondary} />
               </View>
               <Text style={{ 
                 fontWeight: '700', 
                 fontSize: 20, 
-                color: DesignSystem.colors.neutral[900] 
+                color: colors.onSurface 
               }}>
                 Subscription
               </Text>
@@ -406,7 +422,7 @@ export default function ProfileScreen() {
             
             <View style={{ marginBottom: 16 }}>
               <Text style={{ 
-                color: DesignSystem.colors.neutral[600], 
+                color: colors.onSurfaceVariant, 
                 fontSize: 14, 
                 marginBottom: 4 
               }}>
@@ -415,14 +431,14 @@ export default function ProfileScreen() {
               <Text style={{ 
                 fontWeight: '700', 
                 fontSize: 18, 
-                color: DesignSystem.colors.neutral[900],
+                color: colors.onSurface,
                 marginBottom: 4,
               }}>
                 {userProfile.subscription?.planId?.replace('_', ' ') || 'Free'}
               </Text>
               {userProfile.subscription?.planId !== 'free' && userProfile.subscription?.currentPeriodEnd && (
                 <Text style={{ 
-                  color: DesignSystem.colors.neutral[600], 
+                  color: colors.onSurfaceVariant, 
                   fontSize: 14 
                 }}>
                   Renews on {format(new Date(userProfile.subscription.currentPeriodEnd), 'MMM dd, yyyy')}
@@ -449,7 +465,7 @@ export default function ProfileScreen() {
             
             {userProfile.subscription?.plan === 'free' && (
               <View style={{
-                backgroundColor: DesignSystem.colors.neutral[50],
+                backgroundColor: colors.background,
                 padding: 16,
                 borderRadius: 12,
                 marginTop: 16,
@@ -457,13 +473,13 @@ export default function ProfileScreen() {
                 <Text style={{ 
                   fontWeight: '600', 
                   fontSize: 14, 
-                  color: DesignSystem.colors.neutral[900],
+                  color: colors.onSurface,
                   marginBottom: 8,
                 }}>
                   Upgrade to unlock:
                 </Text>
                 <Text style={{ 
-                  color: DesignSystem.colors.neutral[700], 
+                  color: colors.onSurfaceVariant, 
                   fontSize: 13, 
                   lineHeight: 20,
                 }}>
@@ -481,17 +497,17 @@ export default function ProfileScreen() {
           <ModernCard style={{ marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
               <View style={{
-                backgroundColor: DesignSystem.colors.primary[100],
+                backgroundColor: colors.primaryContainer,
                 borderRadius: 12,
                 padding: 8,
                 marginRight: 12,
               }}>
-                <User size={24} color={DesignSystem.colors.primary[600]} />
+                <User size={24} color={colors.primary} />
               </View>
               <Text style={{ 
                 fontWeight: '700', 
                 fontSize: 20, 
-                color: DesignSystem.colors.neutral[900] 
+                color: colors.onSurface 
               }}>
                 Account Details
               </Text>
@@ -499,22 +515,22 @@ export default function ProfileScreen() {
             
             <View style={{ marginBottom: 12 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <Text style={{ color: DesignSystem.colors.neutral[600], fontSize: 14 }}>Display Name</Text>
-                <Text style={{ fontWeight: '600', fontSize: 15, color: DesignSystem.colors.neutral[900] }}>
+                <Text style={{ color: colors.onSurfaceVariant, fontSize: 14 }}>Display Name</Text>
+                <Text style={{ fontWeight: '600', fontSize: 15, color: colors.onSurface }}>
                   {userProfile.displayName}
                 </Text>
               </View>
-              <Divider style={{ backgroundColor: DesignSystem.colors.neutral[200] }} />
+              <Divider style={{ backgroundColor: colors.outlineVariant }} />
             </View>
             
             <View style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <Text style={{ color: DesignSystem.colors.neutral[600], fontSize: 14 }}>Default Currency</Text>
-                <Text style={{ fontWeight: '600', fontSize: 15, color: DesignSystem.colors.neutral[900] }}>
+                <Text style={{ color: colors.onSurfaceVariant, fontSize: 14 }}>Default Currency</Text>
+                <Text style={{ fontWeight: '600', fontSize: 15, color: colors.onSurface }}>
                   {userProfile.defaultCurrency}
                 </Text>
               </View>
-              <Divider style={{ backgroundColor: DesignSystem.colors.neutral[200] }} />
+              <Divider style={{ backgroundColor: colors.outlineVariant }} />
             </View>
             
             <ModernButton
@@ -522,7 +538,7 @@ export default function ProfileScreen() {
               onPress={() => setEditProfileOpen(true)}
               variant="outline"
               fullWidth
-              icon={<Settings size={18} color={DesignSystem.colors.primary[600]} />}
+              icon={<Settings size={18} color={colors.primary} />}
             />
           </ModernCard>
         </Animated.View>
@@ -532,37 +548,37 @@ export default function ProfileScreen() {
           <ModernCard style={{ marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
               <View style={{
-                backgroundColor: DesignSystem.colors.secondary[100],
+                backgroundColor: colors.secondaryContainer,
                 borderRadius: 12,
                 padding: 8,
                 marginRight: 12,
               }}>
-                <Palette size={24} color={DesignSystem.colors.secondary[600]} />
+                <Palette size={24} color={colors.secondary} />
               </View>
               <Text style={{ 
                 fontWeight: '700', 
                 fontSize: 20, 
-                color: DesignSystem.colors.neutral[900] 
+                color: colors.onSurface 
               }}>
                 Appearance
               </Text>
             </View>
             
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={{ color: DesignSystem.colors.neutral[600], fontSize: 15 }}>Dark Mode</Text>
+              <Text style={{ color: colors.onSurfaceVariant, fontSize: 15 }}>Dark Mode</Text>
               <Switch 
                 value={theme === 'dark'} 
                 onValueChange={handleThemeToggle}
                 trackColor={{ 
-                  false: DesignSystem.colors.neutral[300], 
-                  true: DesignSystem.colors.primary[500] 
+                  false: colors.outlineVariant, 
+                  true: colors.primary 
                 }}
-                thumbColor={theme === 'dark' ? '#fff' : '#fff'}
+                thumbColor={theme === 'dark' ? colors.primary : '#fff'}
               />
             </View>
             
             <Text style={{ 
-              color: DesignSystem.colors.neutral[500], 
+              color: colors.onSurfaceVariant, 
               fontSize: 13, 
               marginBottom: 16 
             }}>
@@ -572,7 +588,7 @@ export default function ProfileScreen() {
             <View style={{ 
               flexDirection: 'row', 
               justifyContent: 'space-around', 
-              backgroundColor: DesignSystem.colors.neutral[50],
+              backgroundColor: colors.background,
               borderRadius: 16,
               padding: 8,
             }}>
@@ -582,20 +598,20 @@ export default function ProfileScreen() {
                   padding: 12,
                   borderRadius: 12,
                   minWidth: 80,
-                  backgroundColor: theme === 'system' ? DesignSystem.colors.primary[100] : 'transparent',
+                  backgroundColor: theme === 'system' ? colors.primaryContainer : 'transparent',
                 }}
                 onPress={() => handleThemeModeChange('system')}
               >
                 <MaterialCommunityIcons
                   name="theme-light-dark"
                   size={24}
-                  color={theme === 'system' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[500]}
+                  color={theme === 'system' ? colors.primary : colors.onSurfaceVariant}
                 />
                 <Text style={{
                   marginTop: 8,
                   fontSize: 12,
                   fontWeight: theme === 'system' ? '600' : '500',
-                  color: theme === 'system' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[600],
+                  color: theme === 'system' ? colors.primary : colors.onSurfaceVariant,
                 }}>
                   System
                 </Text>
@@ -606,20 +622,20 @@ export default function ProfileScreen() {
                   padding: 12,
                   borderRadius: 12,
                   minWidth: 80,
-                  backgroundColor: theme === 'light' ? DesignSystem.colors.primary[100] : 'transparent',
+                  backgroundColor: theme === 'light' ? colors.primaryContainer : 'transparent',
                 }}
                 onPress={() => handleThemeModeChange('light')}
               >
                 <MaterialCommunityIcons
                   name="white-balance-sunny"
                   size={24}
-                  color={theme === 'light' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[500]}
+                  color={theme === 'light' ? colors.primary : colors.onSurfaceVariant}
                 />
                 <Text style={{
                   marginTop: 8,
                   fontSize: 12,
                   fontWeight: theme === 'light' ? '600' : '500',
-                  color: theme === 'light' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[600],
+                  color: theme === 'light' ? colors.primary : colors.onSurfaceVariant,
                 }}>
                   Light
                 </Text>
@@ -630,20 +646,20 @@ export default function ProfileScreen() {
                   padding: 12,
                   borderRadius: 12,
                   minWidth: 80,
-                  backgroundColor: theme === 'dark' ? DesignSystem.colors.primary[100] : 'transparent',
+                  backgroundColor: theme === 'dark' ? colors.primaryContainer : 'transparent',
                 }}
                 onPress={() => handleThemeModeChange('dark')}
               >
                 <MaterialCommunityIcons
                   name="weather-night"
                   size={24}
-                  color={theme === 'dark' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[500]}
+                  color={theme === 'dark' ? colors.primary : colors.onSurfaceVariant}
                 />
                 <Text style={{
                   marginTop: 8,
                   fontSize: 12,
                   fontWeight: theme === 'dark' ? '600' : '500',
-                  color: theme === 'dark' ? DesignSystem.colors.primary[600] : DesignSystem.colors.neutral[600],
+                  color: theme === 'dark' ? colors.primary : colors.onSurfaceVariant,
                 }}>
                   Dark
                 </Text>
@@ -657,24 +673,24 @@ export default function ProfileScreen() {
           <ModernCard style={{ marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
               <View style={{
-                backgroundColor: DesignSystem.colors.warning[100],
+                backgroundColor: colors.secondaryContainer,
                 borderRadius: 12,
                 padding: 8,
                 marginRight: 12,
               }}>
-                <Bell size={24} color={DesignSystem.colors.warning[600]} />
+                <Bell size={24} color={colors.secondary} />
               </View>
               <Text style={{ 
                 fontWeight: '700', 
                 fontSize: 20, 
-                color: DesignSystem.colors.neutral[900] 
+                color: colors.onSurface 
               }}>
                 Notifications
               </Text>
             </View>
             
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={{ color: DesignSystem.colors.neutral[700], fontSize: 15 }}>Push Notifications</Text>
+              <Text style={{ color: colors.onSurfaceVariant, fontSize: 15 }}>Push Notifications</Text>
               <ModernButton
                 title={notifEnabled ? 'Enabled' : 'Enable'}
                 onPress={handleEnableNotif}
@@ -686,7 +702,7 @@ export default function ProfileScreen() {
             </View>
             
             <Text style={{ 
-              color: DesignSystem.colors.neutral[500], 
+              color: colors.onSurfaceVariant, 
               fontSize: 13 
             }}>
               Status: {notifStatus.charAt(0).toUpperCase() + notifStatus.slice(1)}
@@ -699,17 +715,17 @@ export default function ProfileScreen() {
           <ModernCard style={{ marginBottom: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
               <View style={{
-                backgroundColor: DesignSystem.colors.error[100],
+                backgroundColor: colors.errorContainer,
                 borderRadius: 12,
                 padding: 8,
                 marginRight: 12,
               }}>
-                <Shield size={24} color={DesignSystem.colors.error[600]} />
+                <Shield size={24} color={colors.error} />
               </View>
               <Text style={{ 
                 fontWeight: '700', 
                 fontSize: 20, 
-                color: DesignSystem.colors.neutral[900] 
+                color: colors.onSurface 
               }}>
                 Security
               </Text>
@@ -721,7 +737,7 @@ export default function ProfileScreen() {
               variant="outline"
               fullWidth
               style={{ marginBottom: 12 }}
-              icon={<Lock size={18} color={DesignSystem.colors.primary[600]} />}
+              icon={<Lock size={18} color={colors.primary} />}
             />
             
             <ModernButton
@@ -730,7 +746,7 @@ export default function ProfileScreen() {
               variant="outline"
               fullWidth
               style={{ marginBottom: 16 }}
-              icon={<Mail size={18} color={DesignSystem.colors.primary[600]} />}
+              icon={<Mail size={18} color={colors.primary} />}
             />
             
             <ModernButton
@@ -747,7 +763,7 @@ export default function ProfileScreen() {
               onPress={handleLogout}
               variant="outline"
               fullWidth
-              icon={<LogOut size={18} color={DesignSystem.colors.primary[600]} />}
+              icon={<LogOut size={18} color={colors.primary} />}
             />
           </ModernCard>
         </Animated.View>
@@ -757,17 +773,17 @@ export default function ProfileScreen() {
           <ModernCard>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
               <View style={{
-                backgroundColor: DesignSystem.colors.neutral[100],
+                backgroundColor: colors.background,
                 borderRadius: 12,
                 padding: 8,
                 marginRight: 12,
               }}>
-                <MaterialCommunityIcons name="information" size={24} color={DesignSystem.colors.neutral[600]} />
+                <MaterialCommunityIcons name="information" size={24} color={colors.onSurfaceVariant} />
               </View>
               <Text style={{ 
                 fontWeight: '700', 
                 fontSize: 20, 
-                color: DesignSystem.colors.neutral[900] 
+                color: colors.onSurface 
               }}>
                 App Info & Support
               </Text>
@@ -775,12 +791,12 @@ export default function ProfileScreen() {
             
             <View style={{ marginBottom: 16 }}>
               <Text style={{ 
-                color: DesignSystem.colors.neutral[600], 
+                color: colors.onSurfaceVariant, 
                 fontSize: 14 
               }}>
                 Version: <Text style={{ 
                   fontWeight: '600', 
-                  color: DesignSystem.colors.neutral[900] 
+                  color: colors.onSurface 
                 }}>
                   {appVersion}
                 </Text>
@@ -813,276 +829,393 @@ export default function ProfileScreen() {
         </Animated.View>
       </ScrollView>
       
-        {/* Edit Profile Dialog */}
-        <Portal>
-          <Dialog 
-            visible={editProfileOpen} 
-            onDismiss={() => setEditProfileOpen(false)}
-            style={{ borderRadius: 20 }}
+      {/* --- Edit Profile Bottom Sheet --- */}
+      <Portal>
+        <BottomSheet
+          ref={editProfileSheetRef}
+          index={editProfileOpen ? 0 : -1}
+          snapPoints={['48%']}
+          enablePanDownToClose
+          onClose={closeEditProfile}
+          backgroundStyle={{
+            backgroundColor: dark ? colors.elevation.level2 : colors.surface,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+          }}
+          handleIndicatorStyle={{
+            backgroundColor: colors.outlineVariant,
+            width: 60,
+            height: 5,
+            borderRadius: 3,
+            marginTop: 8,
+            marginBottom: 12,
+            alignSelf: 'center',
+          }}
+          style={{ zIndex: 100 }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
           >
-            <Dialog.Title>Edit Profile</Dialog.Title>
-            <Dialog.Content>
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text
+                style={{
+                  fontWeight: 'bold',
+                  fontSize: 22,
+                  color: colors.primary,
+                  textAlign: 'center',
+                  marginBottom: 18,
+                }}
+              >
+                Edit Profile
+              </Text>
               <ModernInput
                 label="Display Name"
                 value={displayName}
                 onChangeText={setDisplayName}
+                style={{
+                  marginBottom: 18,
+                  backgroundColor: dark ? colors.elevation.level1 : colors.background,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.outline,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 17,
+                }}
+                inputStyle={{
+                  fontSize: 17,
+                  color: colors.onBackground,
+                }}
+                autoFocus
+                placeholder="Enter your name"
+                placeholderTextColor={colors.onSurfaceVariant}
+                returnKeyType="done"
+                blurOnSubmit
               />
-              
-              <Text style={{ 
-                marginBottom: 6, 
-                fontSize: 14, 
-                fontWeight: '600',
-                color: DesignSystem.colors.neutral[700] 
-              }}>
+
+              <Text
+                style={{
+                  marginBottom: 8,
+                  fontSize: 15,
+                  fontWeight: '600',
+                  color: colors.onSurfaceVariant,
+                }}
+              >
                 Default Currency
               </Text>
-              <TouchableOpacity onPress={() => setCurrencyModal(true)} style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.outline, borderRadius: 8, padding: 12, marginBottom: 8, backgroundColor: colors.elevation.level1 }}>
-                <Text style={{ color: colors.onBackground, fontSize: 16 }}>{SUPPORTED_CURRENCIES.find(c => c.code === currency)?.code} - {SUPPORTED_CURRENCIES.find(c => c.code === currency)?.name}</Text>
+              <TouchableOpacity
+                onPress={() => setCurrencyModal(true)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.outline,
+                  borderRadius: 10,
+                  padding: 14,
+                  marginBottom: 8,
+                  backgroundColor: dark ? colors.elevation.level1 : colors.background,
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={{ color: colors.onBackground, fontSize: 16, fontWeight: '500' }}>
+                  {SUPPORTED_CURRENCIES.find(c => c.code === currency)?.code} - {SUPPORTED_CURRENCIES.find(c => c.code === currency)?.name}
+                </Text>
                 <Ionicons name="chevron-down" size={20} color={colors.onSurfaceVariant} style={{ marginLeft: 'auto' }} />
               </TouchableOpacity>
               <Portal>
-                <Modal visible={currencyModal} onDismiss={() => setCurrencyModal(false)} contentContainerStyle={{ backgroundColor: colors.background, margin: 24, borderRadius: 12, padding: 0 }}>
+                <Modal
+                  visible={currencyModal}
+                  onDismiss={() => setCurrencyModal(false)}
+                  contentContainerStyle={{
+                    backgroundColor: dark ? colors.elevation.level2 : colors.background,
+                    margin: 24,
+                    borderRadius: 16,
+                    padding: 0,
+                  }}
+                >
                   <List.Section>
                     {SUPPORTED_CURRENCIES.map(c => (
                       <List.Item
                         key={c.code}
                         title={`${c.code} - ${c.name}`}
-                        onPress={() => { setCurrency(c.code); setCurrencyModal(false); }}
-                        left={props => <List.Icon {...props} icon={currency === c.code ? 'check-circle' : 'circle-outline'} color={currency === c.code ? colors.primary : colors.onSurfaceVariant} />}
+                        onPress={() => {
+                          setCurrency(c.code);
+                          setCurrencyModal(false);
+                        }}
+                        left={props => (
+                          <List.Icon
+                            {...props}
+                            icon={currency === c.code ? 'check-circle' : 'circle-outline'}
+                            color={currency === c.code ? colors.primary : colors.onSurfaceVariant}
+                          />
+                        )}
+                        titleStyle={{
+                          color: colors.onBackground,
+                          fontWeight: currency === c.code ? 'bold' : 'normal',
+                          fontSize: 16,
+                        }}
+                        style={{
+                          backgroundColor: currency === c.code
+                            ? (dark ? colors.primaryContainer : colors.primary + '22')
+                            : 'transparent',
+                          borderRadius: 8,
+                          marginHorizontal: 8,
+                          marginVertical: 2,
+                        }}
                       />
                     ))}
                   </List.Section>
                 </Modal>
               </Portal>
-            </Dialog.Content>
-            <Dialog.Actions>
-              <ModernButton
-                title="Cancel"
-                onPress={() => setEditProfileOpen(false)}
-                variant="ghost"
-              />
-              <ModernButton
-                title="Save"
-                onPress={handleSaveProfile}
-                loading={editLoading}
-                variant="primary"
-              />
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
-        
-        {/* Change Password Dialog */}
-        <Portal>
-          <Dialog 
-            visible={changePasswordOpen} 
-            onDismiss={() => setChangePasswordOpen(false)}
-            style={{ borderRadius: 20 }}
-          >
-            <Dialog.Title>Change Password</Dialog.Title>
-            <Dialog.Content>
-              <ModernInput
-                label="Current Password"
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-                secureTextEntry
-              />
-              <ModernInput
-                label="New Password"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                secureTextEntry
-              />
-              <ModernInput
-                label="Confirm New Password"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-              />
-            </Dialog.Content>
-            <Dialog.Actions>
-              <ModernButton
-                title="Cancel"
-                onPress={() => setChangePasswordOpen(false)}
-                variant="ghost"
-              />
-              <ModernButton
-                title="Save"
-                onPress={handleChangePassword}
-                loading={passwordLoading}
-                variant="primary"
-              />
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
-        
-        {/* Change Email Dialog */}
-        <Portal>
-          <Dialog 
-            visible={changeEmailOpen} 
-            onDismiss={() => setChangeEmailOpen(false)}
-            style={{ borderRadius: 20 }}
-          >
-            <Dialog.Title>Change Email</Dialog.Title>
-            <Dialog.Content>
-              <ModernInput
-                label="New Email"
-                value={newEmail}
-                onChangeText={setNewEmail}
-                keyboardType="email-address"
-              />
-              <ModernInput
-                label="Current Password"
-                value={emailPassword}
-                onChangeText={setEmailPassword}
-                secureTextEntry
-              />
-            </Dialog.Content>
-            <Dialog.Actions>
-              <ModernButton
-                title="Cancel"
-                onPress={() => setChangeEmailOpen(false)}
-                variant="ghost"
-              />
-              <ModernButton
-                title="Save"
-                onPress={handleChangeEmail}
-                loading={emailLoading}
-                variant="primary"
-              />
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
-        
-        {/* Delete Account Dialog (real) */}
-        <Portal>
-          <Dialog 
-            visible={deleteDialog} 
-            onDismiss={() => setDeleteDialog(false)}
-            style={{ borderRadius: 20 }}
-          >
-            <Dialog.Title>Delete Account</Dialog.Title>
-            <Dialog.Content>
-              <Text>Are you sure you want to delete your account? This action cannot be undone.</Text>
-              <ModernInput
-                label="Current Password"
-                value={deletePassword}
-                onChangeText={setDeletePassword}
-                secureTextEntry
-              />
-            </Dialog.Content>
-            <Dialog.Actions>
-              <ModernButton
-                title="Cancel"
-                onPress={() => setDeleteDialog(false)}
-                variant="ghost"
-              />
-              <ModernButton
-                title="Delete"
-                onPress={handleDeleteAccount}
-                loading={deleteLoading}
-                variant="danger"
-              />
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
-
-        {/* Upgrade Dialog */}
-        <Portal>
-          <Dialog 
-            visible={upgradeDialog} 
-            onDismiss={() => setUpgradeDialog(false)}
-            style={{ borderRadius: 20 }}
-          >
-            <Dialog.Title>Upgrade to Premium</Dialog.Title>
-            <Dialog.Content style={{ paddingVertical: 16 }}>
-              <Text style={{ marginBottom: 16 }}>Choose your plan:</Text>
-              <ModernButton
-                title="Monthly - $4.99/month"
-                onPress={() => handleUpgradeToPremium('monthly')}
-                loading={upgrading && upgradePeriod === 'monthly'}
-                disabled={upgrading}
-                variant="primary"
-                fullWidth
-                style={{ marginBottom: 12 }}
-              />
-              <ModernButton
-                title="Yearly - $49.99/year (Save 17%)"
-                onPress={() => handleUpgradeToPremium('yearly')}
-                loading={upgrading && upgradePeriod === 'yearly'}
-                disabled={upgrading}
-                variant="secondary"
-                fullWidth
-              />
-            </Dialog.Content>
-            <Dialog.Actions style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
-              <ModernButton
-                title="Cancel"
-                onPress={() => setUpgradeDialog(false)}
-                disabled={upgrading}
-                variant="ghost"
-              />
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
-
-        {/* Manage Subscription Dialog */}
-        <Portal>
-          <Dialog 
-            visible={manageSubscriptionOpen} 
-            onDismiss={() => setManageSubscriptionOpen(false)}
-            style={{ borderRadius: 20 }}
-          >
-            <Dialog.Title>Manage Your Subscription</Dialog.Title>
-            <Dialog.Content style={{ paddingVertical: 16 }}>
-              <Text style={{ marginBottom: 16 }}>
-                You are currently on the{' '}
-                <Text style={{ fontWeight: 'bold' }}>
-                  {userProfile.subscription?.planId?.replace('_', ' ')}
-                </Text>{' '}
-                plan.
-              </Text>
-              {userProfile.subscription?.currentPeriodEnd && (
-                <Text style={{ marginBottom: 16 }}>
-                  Your subscription will automatically renew on{' '}
-                  <Text style={{ fontWeight: 'bold' }}>
-                    {format(new Date(userProfile.subscription.currentPeriodEnd), 'PPP')}
-                  </Text>
-                  .
-                </Text>
-              )}
-              <Text style={{ marginBottom: 16, color: colors.onSurfaceVariant, fontSize: 14 }}>
-                This will cancel your Premium subscription at the end of the current billing period. You will be downgraded to the Free plan.
-              </Text>
-            </Dialog.Content>
-            <Dialog.Actions style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
-              <ModernButton
-                title="Close"
-                onPress={() => setManageSubscriptionOpen(false)}
-                variant="ghost"
-              />
-              <ModernButton
-                title="Cancel Subscription"
-                onPress={handleCancelSubscription}
-                loading={canceling}
-                disabled={canceling}
-                variant="danger"
-              />
-            </Dialog.Actions>
-          </Dialog>
-        </Portal>
-
-        <Snackbar
-          visible={snackbar.visible}
-          onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
-          duration={3000}
-          style={{ 
-            backgroundColor: snackbar.error ? DesignSystem.colors.error[500] : DesignSystem.colors.primary[500],
-            borderRadius: 12,
-            margin: 16,
-          }}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 }}>
+                <ModernButton
+                  title="Cancel"
+                  onPress={closeEditProfile}
+                  variant="ghost"
+                  style={{
+                    borderRadius: 10,
+                    minWidth: 100,
+                  }}
+                  textStyle={{
+                    fontWeight: 'bold',
+                    color: colors.onSurfaceVariant,
+                  }}
+                />
+                <ModernButton
+                  title="Save"
+                  onPress={handleSaveProfile}
+                  loading={editLoading}
+                  variant="primary"
+                  style={{
+                    borderRadius: 10,
+                    minWidth: 100,
+                  }}
+                  textStyle={{
+                    fontWeight: 'bold',
+                  }}
+                />
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </BottomSheet>
+      </Portal>
+      
+      {/* Change Password Dialog */}
+      <Portal>
+        <Dialog 
+          visible={changePasswordOpen} 
+          onDismiss={() => setChangePasswordOpen(false)}
+          style={{ borderRadius: 20 }}
         >
-          {snackbar.message}
-        </Snackbar>
+          <Dialog.Title>Change Password</Dialog.Title>
+          <Dialog.Content>
+            <ModernInput
+              label="Current Password"
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry
+            />
+            <ModernInput
+              label="New Password"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+            />
+            <ModernInput
+              label="Confirm New Password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <ModernButton
+              title="Cancel"
+              onPress={() => setChangePasswordOpen(false)}
+              variant="ghost"
+            />
+            <ModernButton
+              title="Save"
+              onPress={handleChangePassword}
+              loading={passwordLoading}
+              variant="primary"
+            />
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+      
+      {/* Change Email Dialog */}
+      <Portal>
+        <Dialog 
+          visible={changeEmailOpen} 
+          onDismiss={() => setChangeEmailOpen(false)}
+          style={{ borderRadius: 20 }}
+        >
+          <Dialog.Title>Change Email</Dialog.Title>
+          <Dialog.Content>
+            <ModernInput
+              label="New Email"
+              value={newEmail}
+              onChangeText={setNewEmail}
+              keyboardType="email-address"
+            />
+            <ModernInput
+              label="Current Password"
+              value={emailPassword}
+              onChangeText={setEmailPassword}
+              secureTextEntry
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <ModernButton
+              title="Cancel"
+              onPress={() => setChangeEmailOpen(false)}
+              variant="ghost"
+            />
+            <ModernButton
+              title="Save"
+              onPress={handleChangeEmail}
+              loading={emailLoading}
+              variant="primary"
+            />
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+      
+      {/* Delete Account Dialog (real) */}
+      <Portal>
+        <Dialog 
+          visible={deleteDialog} 
+          onDismiss={() => setDeleteDialog(false)}
+          style={{ borderRadius: 20 }}
+        >
+          <Dialog.Title>Delete Account</Dialog.Title>
+          <Dialog.Content>
+            <Text>Are you sure you want to delete your account? This action cannot be undone.</Text>
+            <ModernInput
+              label="Current Password"
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              secureTextEntry
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <ModernButton
+              title="Cancel"
+              onPress={() => setDeleteDialog(false)}
+              variant="ghost"
+            />
+            <ModernButton
+              title="Delete"
+              onPress={handleDeleteAccount}
+              loading={deleteLoading}
+              variant="danger"
+            />
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Upgrade Dialog */}
+      <Portal>
+        <Dialog 
+          visible={upgradeDialog} 
+          onDismiss={() => setUpgradeDialog(false)}
+          style={{ borderRadius: 20 }}
+        >
+          <Dialog.Title>Upgrade to Premium</Dialog.Title>
+          <Dialog.Content style={{ paddingVertical: 16 }}>
+            <Text style={{ marginBottom: 16 }}>Choose your plan:</Text>
+            <ModernButton
+              title="Monthly - $4.99/month"
+              onPress={() => handleUpgradeToPremium('monthly')}
+              loading={upgrading && upgradePeriod === 'monthly'}
+              disabled={upgrading}
+              variant="primary"
+              fullWidth
+              style={{ marginBottom: 12 }}
+            />
+            <ModernButton
+              title="Yearly - $49.99/year (Save 17%)"
+              onPress={() => handleUpgradeToPremium('yearly')}
+              loading={upgrading && upgradePeriod === 'yearly'}
+              disabled={upgrading}
+              variant="secondary"
+              fullWidth
+            />
+          </Dialog.Content>
+          <Dialog.Actions style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+            <ModernButton
+              title="Cancel"
+              onPress={() => setUpgradeDialog(false)}
+              disabled={upgrading}
+              variant="ghost"
+            />
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Manage Subscription Dialog */}
+      <Portal>
+        <Dialog 
+          visible={manageSubscriptionOpen} 
+          onDismiss={() => setManageSubscriptionOpen(false)}
+          style={{ borderRadius: 20 }}
+        >
+          <Dialog.Title>Manage Your Subscription</Dialog.Title>
+          <Dialog.Content style={{ paddingVertical: 16 }}>
+            <Text style={{ marginBottom: 16 }}>
+              You are currently on the{' '}
+              <Text style={{ fontWeight: 'bold' }}>
+                {userProfile.subscription?.planId?.replace('_', ' ')}
+              </Text>{' '}
+              plan.
+            </Text>
+            {userProfile.subscription?.currentPeriodEnd && (
+              <Text style={{ marginBottom: 16 }}>
+                Your subscription will automatically renew on{' '}
+                <Text style={{ fontWeight: 'bold' }}>
+                  {format(new Date(userProfile.subscription.currentPeriodEnd), 'PPP')}
+                </Text>
+                .
+              </Text>
+            )}
+            <Text style={{ marginBottom: 16, color: colors.onSurfaceVariant, fontSize: 14 }}>
+              This will cancel your Premium subscription at the end of the current billing period. You will be downgraded to the Free plan.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
+            <ModernButton
+              title="Close"
+              onPress={() => setManageSubscriptionOpen(false)}
+              variant="ghost"
+            />
+            <ModernButton
+              title="Cancel Subscription"
+              onPress={handleCancelSubscription}
+              loading={canceling}
+              disabled={canceling}
+              variant="danger"
+            />
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      <Snackbar
+        visible={snackbar.visible}
+        onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
+        duration={3000}
+        style={{ 
+          backgroundColor: snackbar.error ? colors.error : colors.primary,
+          borderRadius: 12,
+          margin: 16,
+        }}
+      >
+        {snackbar.message}
+      </Snackbar>
     </Surface>
   );
-} 
+}

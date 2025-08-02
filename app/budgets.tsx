@@ -9,10 +9,10 @@ import { Alert, Image, ScrollView, View } from 'react-native';
 import { ActivityIndicator, Button, Card, Dialog, IconButton, Portal, ProgressBar, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 import RNPickerSelect from 'react-native-picker-select';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SUPPORTED_CURRENCIES } from '../../constants/types';
-import { auth, storage } from '../../firebase/config';
-import { addBudget, Budget, BudgetPeriod, deleteBudget, getBudgetsByUser, getExpensesByUser, getGlobalCategories, updateBudget } from '../../firebase/firestore';
-import { useAuth } from '../../hooks/useAuth';
+import { SUPPORTED_CURRENCIES, Budget, BudgetPeriod } from '../constants/types';
+import { auth, storage } from '../firebase/config';
+import { addBudget, deleteBudget, getBudgetsByUser, getExpensesByUser, getGlobalCategories, updateBudget } from '../firebase/firestore';
+import { useAuth } from '../hooks/useAuth';
 
 const PERIOD_LABELS: Record<BudgetPeriod, string> = {
   weekly: 'Weekly',

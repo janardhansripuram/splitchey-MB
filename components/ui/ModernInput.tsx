@@ -1,6 +1,18 @@
-import React, { useRef, useState } from 'react';
-import { TextInput, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
-import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import React, { useRef, useState, useEffect } from 'react';
+import {
+  TextInput,
+  TextStyle,
+  TouchableOpacity,
+  View,
+  ViewStyle,
+} from 'react-native';
+import { useTheme } from 'react-native-paper';
+import Animated, {
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { DesignSystem } from '../../constants/DesignSystem';
 
 interface ModernInputProps {
@@ -12,7 +24,13 @@ interface ModernInputProps {
   disabled?: boolean;
   multiline?: boolean;
   numberOfLines?: number;
-  keyboardType?: 'default' | 'email-address' | 'numeric' | 'phone-pad' | 'decimal-pad';
+  keyboardType?:
+    | 'default'
+    | 'email-address'
+    | 'numeric'
+    | 'phone-pad'
+    | 'decimal-pad'
+    | 'number-pad';
   secureTextEntry?: boolean;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
@@ -21,6 +39,8 @@ interface ModernInputProps {
   inputStyle?: TextStyle;
   autoFocus?: boolean;
   maxLength?: number;
+  editable?: boolean;
+  pointerEvents?: 'none' | 'auto'; // Add pointerEvents prop
 }
 
 export const ModernInput: React.FC<ModernInputProps> = ({
@@ -44,25 +64,40 @@ export const ModernInput: React.FC<ModernInputProps> = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
-  
+  const { colors, dark } = useTheme();
+
   const focusAnimation = useSharedValue(0);
   const labelAnimation = useSharedValue(value ? 1 : 0);
+  const animationDuration = 120;
+
+  // Update label animation when value changes
+  useEffect(() => {
+    if (value && value.trim()) {
+      labelAnimation.value = withTiming(1, { duration: animationDuration });
+    } else if (!isFocused) {
+      labelAnimation.value = withTiming(0, { duration: animationDuration });
+    }
+  }, [value]);
 
   const animatedContainerStyle = useAnimatedStyle(() => {
     const borderColor = interpolateColor(
       focusAnimation.value,
       [0, 1],
       [
-        error ? DesignSystem.colors.error[500] : DesignSystem.colors.neutral[300],
-        error ? DesignSystem.colors.error[500] : DesignSystem.colors.primary[500]
+        error
+          ? DesignSystem.colors.error[500]
+          : dark
+          ? colors.outline
+          : DesignSystem.colors.neutral[300],
+        error ? DesignSystem.colors.error[500] : colors.primary,
       ]
     );
 
     return {
       borderColor,
-      shadowOpacity: focusAnimation.value * 0.1,
-      shadowRadius: focusAnimation.value * 4,
-      elevation: focusAnimation.value * 2,
+      shadowOpacity: focusAnimation.value * (dark ? 0.3 : 0.1),
+      shadowRadius: focusAnimation.value * 8,
+      elevation: focusAnimation.value * 4,
     };
   });
 
@@ -70,93 +105,125 @@ export const ModernInput: React.FC<ModernInputProps> = ({
     return {
       transform: [
         {
-          translateY: withTiming(labelAnimation.value * -12, { duration: 200 }),
+          translateY: withTiming(labelAnimation.value ? -24 : 0, {
+            duration: animationDuration,
+          }),
         },
         {
-          scale: withTiming(1 - labelAnimation.value * 0.15, { duration: 200 }),
+          scale: withTiming(labelAnimation.value ? 0.85 : 1, {
+            duration: animationDuration,
+          }),
         },
       ],
+      opacity: withTiming(labelAnimation.value ? 1 : 0.6, {
+        duration: animationDuration,
+      }),
     };
   });
 
   const handleFocus = () => {
     setIsFocused(true);
-    focusAnimation.value = withTiming(1, { duration: 200 });
+    focusAnimation.value = withTiming(1, { duration: animationDuration });
     if (label) {
-      labelAnimation.value = withTiming(1, { duration: 200 });
+      labelAnimation.value = withTiming(1, { duration: animationDuration });
     }
   };
 
   const handleBlur = () => {
     setIsFocused(false);
-    focusAnimation.value = withTiming(0, { duration: 200 });
-    if (label && !value) {
-      labelAnimation.value = withTiming(0, { duration: 200 });
+    focusAnimation.value = withTiming(0, { duration: animationDuration });
+    if (label && !value.trim()) {
+      labelAnimation.value = withTiming(0, { duration: animationDuration });
     }
   };
 
   const containerStyle: ViewStyle = {
-    marginBottom: DesignSystem.spacing[4],
+    marginBottom: DesignSystem.spacing[5],
     ...style,
   };
 
   const inputContainerStyle: ViewStyle = {
     flexDirection: 'row',
-    alignItems: multiline ? 'flex-start' : 'center',
-    borderWidth: 1.5,
-    borderRadius: DesignSystem.borderRadius.md,
-    backgroundColor: disabled ? DesignSystem.colors.neutral[100] : '#ffffff',
+    alignItems: 'center', // 👈 key to align icon + text
+    borderWidth: 2,
+    borderRadius: DesignSystem.borderRadius.lg,
+    backgroundColor: disabled
+      ? dark
+        ? colors.surfaceDisabled
+        : DesignSystem.colors.neutral[100]
+      : dark
+      ? colors.surface
+      : '#ffffff',
     paddingHorizontal: DesignSystem.spacing[4],
-    paddingVertical: multiline ? DesignSystem.spacing[3] : DesignSystem.spacing[3],
-    minHeight: multiline ? 80 : 52,
-    shadowColor: DesignSystem.colors.primary[500],
+    minHeight: 56,
+    shadowColor: colors.primary,
   };
 
   const textInputStyle: TextStyle = {
     flex: 1,
     fontSize: DesignSystem.typography.fontSizes.base,
-    color: DesignSystem.colors.neutral[900],
+    color: dark ? colors.onSurface : DesignSystem.colors.neutral[900],
     paddingVertical: 0,
-    textAlignVertical: multiline ? 'top' : 'center',
+    paddingTop: 10,
+    paddingBottom: 10,
+    textAlignVertical: 'center',
+    lineHeight: DesignSystem.typography.fontSizes.base + 4,
+    letterSpacing: 0.25,
+    fontWeight: '400',
     ...inputStyle,
   };
 
   const labelStyle: TextStyle = {
     position: 'absolute',
-    left: leftIcon ? 48 : DesignSystem.spacing[4],
-    top: multiline ? DesignSystem.spacing[3] + 2 : 16,
-    fontSize: DesignSystem.typography.fontSizes.base,
-    color: error 
-      ? DesignSystem.colors.error[500] 
-      : isFocused 
-        ? DesignSystem.colors.primary[500] 
-        : DesignSystem.colors.neutral[500],
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 4,
-    zIndex: 1,
+    left: leftIcon ? 0 : DesignSystem.spacing[4],
+    top: 16,
+    fontSize: DesignSystem.typography.fontSizes.sm,
+    fontWeight: '500',
+    color: error
+      ? DesignSystem.colors.error[500]
+      : isFocused
+      ? colors.primary
+      : dark
+      ? colors.onSurfaceVariant
+      : colors.onSurfaceVariant,
+    backgroundColor: dark ? colors.surface : '#ffffff',
+    paddingHorizontal: 6,
+    zIndex: 10,
   };
 
   return (
     <View style={containerStyle}>
       <Animated.View style={[inputContainerStyle, animatedContainerStyle]}>
         {leftIcon && (
-          <View style={{ marginRight: DesignSystem.spacing[3] }}>
+          <View
+            style={{
+              width: 24,
+              height: 24,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginRight: DesignSystem.spacing[3],
+            }}
+          >
             {leftIcon}
           </View>
         )}
-        
+
         <View style={{ flex: 1, position: 'relative' }}>
           {label && (
             <Animated.Text style={[labelStyle, animatedLabelStyle]}>
               {label}
             </Animated.Text>
           )}
-          
+
           <TextInput
             ref={inputRef}
             style={textInputStyle}
-            placeholder={!label ? placeholder : undefined}
-            placeholderTextColor={DesignSystem.colors.neutral[400]}
+            placeholder={label && !isFocused ? undefined : placeholder}
+            placeholderTextColor={
+              dark
+                ? colors.onSurfaceVariant
+                : DesignSystem.colors.neutral[400]
+            }
             value={value}
             onChangeText={onChangeText}
             onFocus={handleFocus}
@@ -174,7 +241,13 @@ export const ModernInput: React.FC<ModernInputProps> = ({
         {rightIcon && (
           <TouchableOpacity
             onPress={onRightIconPress}
-            style={{ marginLeft: DesignSystem.spacing[3] }}
+            style={{
+              marginLeft: DesignSystem.spacing[3],
+              padding: DesignSystem.spacing[1],
+              borderRadius: DesignSystem.borderRadius.base,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
             disabled={!onRightIconPress}
           >
             {rightIcon}
@@ -189,6 +262,7 @@ export const ModernInput: React.FC<ModernInputProps> = ({
             fontSize: DesignSystem.typography.fontSizes.sm,
             marginTop: DesignSystem.spacing[1],
             marginLeft: DesignSystem.spacing[1],
+            fontWeight: '500',
           }}
         >
           {error}

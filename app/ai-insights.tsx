@@ -1,9 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Voice from '@react-native-voice/voice';
-import * as Notifications from 'expo-notifications';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, Share, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { ActivityIndicator, Button, Card, IconButton, Snackbar, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getExpensesByUser, getIncomeByUser } from '../firebase/firestore';
@@ -16,8 +14,10 @@ const PERIOD_OPTIONS = [
 ];
 
 export default function AIInsightsScreen() {
+  const router = useRouter();
   const { authUser, userProfile, loading: authLoading } = useAuth();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [income, setIncome] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,41 +31,6 @@ export default function AIInsightsScreen() {
   const [anomalies, setAnomalies] = useState<any[] | null>(null);
   const [anomalyLoading, setAnomalyLoading] = useState(false);
   const [qaHistory, setQaHistory] = useState<{ question: string; answer: string }[]>([]);
-
-  // Voice input for Q&A
-  const [isListening, setIsListening] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-
-  useEffect(() => {
-    Voice.onSpeechResults = (event) => {
-      if (event.value && event.value.length > 0) {
-        setQuestion(event.value[0]);
-      }
-      setIsListening(false);
-    };
-    Voice.onSpeechError = (event) => {
-      setVoiceError(event.error?.message || 'Voice error');
-      setIsListening(false);
-    };
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
-    };
-  }, []);
-
-  useEffect(() => {
-    Notifications.requestPermissionsAsync();
-  }, []);
-
-  const handleVoiceInput = async () => {
-    setVoiceError(null);
-    setIsListening(true);
-    try {
-      await Voice.start('en-US');
-    } catch (e: any) {
-      setVoiceError(e.message || 'Could not start voice recognition');
-      setIsListening(false);
-    }
-  };
 
   useEffect(() => {
     if (!authUser) return;
@@ -101,207 +66,199 @@ export default function AIInsightsScreen() {
 
   const handleGenerateSummary = async () => {
     setSummaryLoading(true);
-    setSummary(null);
-    setSnackbar({ visible: false, message: '' });
     try {
-      const functions = getFunctions();
-      const summarizeSpending = httpsCallable(functions, 'summarizeSpending');
-      const res = await summarizeSpending({
-        spendingData: expenseDataString,
-        incomeData: incomeDataString,
-        period: `Last ${period} days`,
-      });
-      let summaryText = '';
-      if (res.data && typeof res.data === 'object' && 'summary' in res.data) {
-        summaryText = String(res.data.summary);
-      } else if (typeof res.data === 'string') {
-        summaryText = res.data;
-      } else {
-        summaryText = String(res.data);
-      }
+      // Simple summary generation
+      const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const totalIncome = filteredIncome.reduce((sum, i) => sum + i.amount, 0);
+      const netSavings = totalIncome - totalExpenses;
+      
+      const topCategories = filteredExpenses.reduce((acc, e) => {
+        acc[e.category] = (acc[e.category] || 0) + e.amount;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      const topCategory = Object.entries(topCategories).sort((a, b) => b[1] - a[1])[0];
+      
+      const summaryText = `Financial Summary (${period} days):
+• Total Income: ${totalIncome.toFixed(2)}
+• Total Expenses: ${totalExpenses.toFixed(2)}
+• Net Savings: ${netSavings.toFixed(2)}
+• Top Spending Category: ${topCategory ? `${topCategory[0]} (${topCategory[1].toFixed(2)})` : 'N/A'}
+• Number of Transactions: ${filteredExpenses.length + filteredIncome.length}`;
+      
       setSummary(summaryText);
-    } catch (e: any) {
-      setSnackbar({ visible: true, message: e.message || 'Failed to generate summary.' });
+    } catch (error) {
+      setSnackbar({ visible: true, message: 'Failed to generate summary.' });
+    } finally {
+      setSummaryLoading(false);
     }
-    setSummaryLoading(false);
   };
 
   const handleAskQuestion = async () => {
     if (!question.trim()) return;
+    
     setQaLoading(true);
-    setAnswer(null);
-    setSnackbar({ visible: false, message: '' });
     try {
-      const functions = getFunctions();
-      const queryFinancialData = httpsCallable(functions, 'queryFinancialData');
-      const res = await queryFinancialData({
-        query: question,
-        expenseData: expenseDataString,
-        incomeData: incomeDataString,
-        period: `Last ${period} days`,
-      });
-      let answerText = '';
-      if (res.data && typeof res.data === 'object' && 'answer' in res.data) {
-        answerText = String(res.data.answer);
-      } else if (typeof res.data === 'string') {
-        answerText = res.data;
-      } else {
-        answerText = String(res.data);
+      // Simple AI response based on question keywords
+      const q = question.toLowerCase();
+      let response = "I'm here to help with your financial insights!";
+      
+      if (q.includes('spend') || q.includes('expense')) {
+        const total = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+        response = `You've spent a total of ${total.toFixed(2)} in the last ${period} days.`;
+      } else if (q.includes('income') || q.includes('earn')) {
+        const total = filteredIncome.reduce((sum, i) => sum + i.amount, 0);
+        response = `You've earned a total of ${total.toFixed(2)} in the last ${period} days.`;
+      } else if (q.includes('category') || q.includes('spending')) {
+        const categories = filteredExpenses.reduce((acc, e) => {
+          acc[e.category] = (acc[e.category] || 0) + e.amount;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        const topCategories = Object.entries(categories)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([cat, amt]) => `${cat}: ${amt.toFixed(2)}`)
+          .join(', ');
+        
+        response = `Your top spending categories are: ${topCategories}`;
+      } else if (q.includes('savings') || q.includes('save')) {
+        const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+        const totalIncome = filteredIncome.reduce((sum, i) => sum + i.amount, 0);
+        const savings = totalIncome - totalExpenses;
+        response = `Your net savings in the last ${period} days is ${savings.toFixed(2)}.`;
       }
-      setAnswer(answerText);
-      setQaHistory(prev => [{ question, answer: answerText }, ...prev].slice(0, 5));
-    } catch (e: any) {
-      setSnackbar({ visible: true, message: e.message || 'Failed to get answer.' });
+      
+      setAnswer(response);
+      setQaHistory(prev => [...prev, { question: question, answer: response }]);
+      setQuestion('');
+    } catch (error) {
+      setSnackbar({ visible: true, message: 'Failed to process question.' });
+    } finally {
+      setQaLoading(false);
     }
-    setQaLoading(false);
   };
 
   const handleDetectAnomalies = async () => {
     setAnomalyLoading(true);
-    setAnomalies(null);
-    setSnackbar({ visible: false, message: '' });
     try {
-      const functions = getFunctions();
-      const detectSpendingAnomalies = httpsCallable(functions, 'detectSpendingAnomalies');
-      const res = await detectSpendingAnomalies({
-        spendingData: expenseDataString,
-        incomeData: incomeDataString,
-        period: `Last ${period} days`,
-      });
-      let foundAnomalies: any[] = [];
-      if (res.data && Array.isArray(res.data)) {
-        foundAnomalies = res.data;
-        setAnomalies(res.data);
-      } else if (res.data && res.data.anomalies) {
-        foundAnomalies = res.data.anomalies;
-        setAnomalies(res.data.anomalies);
-      } else {
-        setAnomalies([]);
-      }
-      if (foundAnomalies.length > 0) {
-        Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Spending Anomaly Detected',
-            body: foundAnomalies[0].anomalyDescription || foundAnomalies[0].description || 'Check your AI Insights for details.',
-            data: { type: 'anomaly' },
-          },
-          trigger: null,
+      const anomalies = [];
+      
+      // Check for unusual spending patterns
+      const avgExpense = filteredExpenses.reduce((sum, e) => sum + e.amount, 0) / filteredExpenses.length;
+      const highExpenses = filteredExpenses.filter(e => e.amount > avgExpense * 2);
+      
+      if (highExpenses.length > 0) {
+        anomalies.push({
+          anomalyDescription: `Unusually high expenses detected: ${highExpenses.length} transactions above average`,
+          reasoning: 'These expenses are more than 2x the average transaction amount'
         });
       }
-    } catch (e: any) {
-      setSnackbar({ visible: true, message: e.message || 'Failed to detect anomalies.' });
-    }
-    setAnomalyLoading(false);
-  };
-
-  // Calculate top categories
-  const categoryTotals: Record<string, number> = {};
-  filteredExpenses.forEach(e => {
-    categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount;
-  });
-  const topCategories = Object.entries(categoryTotals)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const maxCategoryAmount = topCategories.length > 0 ? topCategories[0][1] : 1;
-
-  // Extract AI tip from summary (if available)
-  let aiTip = '';
-  if (summary && typeof summary === 'string') {
-    // Try to extract a tip from the summary (look for 'Potential Savings:' or similar)
-    const match = summary.match(/Potential Savings:(.*)/i);
-    if (match && match[1]) {
-      aiTip = match[1].trim();
-    } else {
-      // Fallback: suggest a top category to budget
-      if (topCategories.length > 0) {
-        aiTip = `Consider setting a budget for ${topCategories[0][0]} to save more!`;
+      
+      // Check for spending gaps
+      if (filteredExpenses.length === 0 && filteredIncome.length > 0) {
+        anomalies.push({
+          anomalyDescription: 'No expenses recorded despite having income',
+          reasoning: 'Consider tracking your expenses for better financial visibility'
+        });
       }
-    }
-  } else if (topCategories.length > 0) {
-    aiTip = `Consider setting a budget for ${topCategories[0][0]} to save more!`;
-  } else {
-    aiTip = 'Track your expenses regularly to discover new ways to save!';
-  }
-
-  // Share handler
-  const handleShareInsights = async () => {
-    let shareText = 'My AI Financial Insights:';
-    if (summary) {
-      shareText += `\n\nSummary:\n${summary}`;
-    }
-    if (topCategories.length > 0) {
-      shareText += '\n\nTop Spending Categories:';
-      topCategories.forEach(([cat, amt]) => {
-        shareText += `\n- ${cat}: ${amt.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-      });
-    }
-    try {
-      await Share.share({ message: shareText });
-    } catch (e) {
-      setSnackbar({ visible: true, message: 'Failed to share insights.' });
+      
+      setAnomalies(anomalies);
+    } catch (error) {
+      setSnackbar({ visible: true, message: 'Failed to detect anomalies.' });
+    } finally {
+      setAnomalyLoading(false);
     }
   };
 
-  const insets = useSafeAreaInsets();
-
-  if (authLoading || loading) {
-    return <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></Surface>;
+  if (loading || authLoading) {
+    return (
+      <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" />
+      </Surface>
+    );
   }
-
-  // 1. Enable Share Insights button when there is a summary or top categories
-  const canShare = !!summary || (Array.isArray(topCategories) && topCategories.length > 0);
 
   return (
-    <Surface style={{ flex: 1, backgroundColor: '#fff', paddingTop: insets.top + 16 }}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }}>
-        {/* Personalized AI Tip Section */}
+    <Surface style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ 
+        paddingTop: insets.top + 20, 
+        paddingBottom: 20, 
+        paddingHorizontal: 20,
+        backgroundColor: colors.primary,
+        borderBottomLeftRadius: 32,
+        borderBottomRightRadius: 32
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+          <IconButton
+            icon="arrow-left"
+            size={24}
+            onPress={() => router.back()}
+            iconColor="#fff"
+          />
+          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 22, marginLeft: 8 }}>
+            AI Insights
+          </Text>
+        </View>
+        <Text style={{ color: '#fff', opacity: 0.9, fontSize: 16 }}>
+          Smart analysis of your financial data
+        </Text>
+      </View>
+      
+      <ScrollView style={{ flex: 1, padding: 20 }}>
+        {/* Period Selection */}
         <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
           <Card.Content>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <MaterialCommunityIcons name="lightbulb-on-outline" size={22} color={colors.primary} style={{ marginRight: 8 }} />
-              <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>Personalized AI Tip</Text>
+              <MaterialCommunityIcons name="calendar-range" size={22} color={colors.primary} style={{ marginRight: 8 }} />
+              <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>Analysis Period</Text>
             </View>
-            <Text style={{ color: colors.onSurfaceVariant }}>{aiTip}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {PERIOD_OPTIONS.map((option) => (
+                <Button
+                  key={option.value}
+                  mode={period === option.value ? 'contained' : 'outlined'}
+                  onPress={() => setPeriod(option.value)}
+                  style={{ flex: 1 }}
+                  compact
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </View>
           </Card.Content>
         </Card>
-        {/* Export/Share Insights Button */}
-        <Button mode="outlined" icon="share-variant" onPress={handleShareInsights} disabled={!canShare} style={{ marginBottom: 20 }}>
-          Share Insights
-        </Button>
-        {/* Top Categories Section */}
+
+        {/* Quick Stats */}
         <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
           <Card.Content>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-              <MaterialCommunityIcons name="chart-bar" size={22} color={colors.primary} style={{ marginRight: 8 }} />
-              <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>Top Spending Categories</Text>
+              <MaterialCommunityIcons name="chart-line" size={22} color={colors.primary} style={{ marginRight: 8 }} />
+              <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>Quick Stats</Text>
             </View>
-            {topCategories.length === 0 && <Text style={{ color: colors.onSurfaceVariant }}>No expenses in this period.</Text>}
-            {/* 2. Fix top spending category amount overflow in the render */}
-            {Array.isArray(topCategories) && topCategories.length > 0 && (
-              <View style={{ marginTop: 8 }}>
-                {topCategories.map((cat, idx) => {
-                  let name = '';
-                  let amount = 0;
-                  let currency = '';
-                  if (Array.isArray(cat)) {
-                    name = cat[0];
-                    amount = typeof cat[1] === 'number' ? cat[1] : 0;
-                  } else {
-                    name = cat.name;
-                    amount = cat.amount;
-                    currency = cat.currency || '';
-                  }
-                  return (
-                    <View key={name} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <Text style={{ fontWeight: 'bold', color: colors.primary }}>{name}</Text>
-                      <Text style={{ color: colors.onSurface, fontWeight: 'bold' }} numberOfLines={1}>{amount.toFixed(2)} {currency}</Text>
-                    </View>
-                  );
-                })}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.primary }}>
+                  {filteredExpenses.length}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.onSurfaceVariant }}>Expenses</Text>
               </View>
-            )}
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.primary }}>
+                  {filteredIncome.length}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.onSurfaceVariant }}>Income</Text>
+              </View>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.primary }}>
+                  {(filteredIncome.reduce((sum, i) => sum + i.amount, 0) - filteredExpenses.reduce((sum, e) => sum + e.amount, 0)).toFixed(0)}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.onSurfaceVariant }}>Net</Text>
+              </View>
+            </View>
           </Card.Content>
         </Card>
+
         {/* AI Summary Section */}
         <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
           <Card.Content>
@@ -309,10 +266,13 @@ export default function AIInsightsScreen() {
               <MaterialCommunityIcons name="file-document-outline" size={22} color={colors.primary} style={{ marginRight: 8 }} />
               <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>AI Summary</Text>
             </View>
-            {summaryLoading && <ActivityIndicator style={{ marginBottom: 8 }} />}
-            {summary && <Text style={{ marginBottom: 8 }}>{summary}</Text>}
+            <Button mode="contained" onPress={handleGenerateSummary} loading={summaryLoading} style={{ marginBottom: 8 }}>
+              Generate Summary
+            </Button>
+            {summary && <Text style={{ marginTop: 8, lineHeight: 20 }}>{summary}</Text>}
           </Card.Content>
         </Card>
+
         {/* Anomaly Detection Section */}
         <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
           <Card.Content>
@@ -320,14 +280,15 @@ export default function AIInsightsScreen() {
               <MaterialCommunityIcons name="alert-decagram-outline" size={22} color={colors.primary} style={{ marginRight: 8 }} />
               <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>Anomaly Detection</Text>
             </View>
-            <Button mode="contained" onPress={handleDetectAnomalies} loading={anomalyLoading} style={{ marginBottom: 8 }}>Detect Anomalies</Button>
-            {anomalyLoading && <ActivityIndicator style={{ marginBottom: 8 }} />}
+            <Button mode="contained" onPress={handleDetectAnomalies} loading={anomalyLoading} style={{ marginBottom: 8 }}>
+              Detect Anomalies
+            </Button>
             {Array.isArray(anomalies) && anomalies.length > 0 && (
               <View style={{ marginTop: 8 }}>
                 {anomalies.map((a, i) => (
                   <Text key={i} style={{ marginBottom: 4, color: '#ef4444' }}>
                     <MaterialCommunityIcons name="alert-outline" size={16} color="#ef4444" style={{ marginRight: 4 }} />
-                    {a.anomalyDescription || a.description || JSON.stringify(a)}
+                    {a.anomalyDescription}
                     {a.reasoning ? ` (${a.reasoning})` : ''}
                   </Text>
                 ))}
@@ -338,6 +299,7 @@ export default function AIInsightsScreen() {
             )}
           </Card.Content>
         </Card>
+
         {/* Q&A Section */}
         <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
           <Card.Content>
@@ -345,21 +307,20 @@ export default function AIInsightsScreen() {
               <MaterialCommunityIcons name="robot-outline" size={22} color={colors.primary} style={{ marginRight: 8 }} />
               <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>Ask a Question</Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TextInput
-                label="Ask about your spending (e.g., How much did I spend on food?)"
-                value={question}
-                onChangeText={setQuestion}
-                mode="outlined"
-                style={{ flex: 1, marginBottom: 8 }}
-              />
-              <IconButton icon={isListening ? 'microphone-off' : 'microphone'} size={24} onPress={handleVoiceInput} style={{ marginLeft: 4, marginBottom: 8 }} loading={isListening} />
-            </View>
-            <Button mode="contained" onPress={handleAskQuestion} loading={qaLoading} disabled={!question.trim()}>Ask AI</Button>
-            {qaLoading && <ActivityIndicator style={{ marginTop: 8 }} />}
-            {answer && <Text style={{ marginTop: 8 }}>{answer}</Text>}
+            <TextInput
+              label="Ask about your spending (e.g., How much did I spend on food?)"
+              value={question}
+              onChangeText={setQuestion}
+              mode="outlined"
+              style={{ marginBottom: 8 }}
+            />
+            <Button mode="contained" onPress={handleAskQuestion} loading={qaLoading} disabled={!question.trim()}>
+              Ask AI
+            </Button>
+            {answer && <Text style={{ marginTop: 8, lineHeight: 20 }}>{answer}</Text>}
           </Card.Content>
         </Card>
+
         {/* Recent Q&A History */}
         {qaHistory.length > 0 && (
           <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 1, backgroundColor: colors.elevation.level1 }}>
@@ -384,13 +345,14 @@ export default function AIInsightsScreen() {
           </Card>
         )}
       </ScrollView>
+      
       <Snackbar
-        visible={snackbar.visible || !!voiceError}
-        onDismiss={() => { setSnackbar({ visible: false, message: '' }); setVoiceError(null); }}
+        visible={snackbar.visible}
+        onDismiss={() => setSnackbar({ visible: false, message: '' })}
         duration={2500}
         style={{ backgroundColor: colors.error }}
       >
-        {snackbar.message || voiceError}
+        {snackbar.message}
       </Snackbar>
     </Surface>
   );

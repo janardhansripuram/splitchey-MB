@@ -8,9 +8,13 @@ import { Alert, Clipboard, KeyboardAvoidingView, Platform, ScrollView, StyleShee
 import { ActivityIndicator, Avatar, Badge, Button, Card, Checkbox, Dialog, Divider, IconButton, List, Menu, Portal, Snackbar, Surface, Text, TextInput, Tooltip, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GroupButton from '../components/ui/GroupButton';
+import { ChatMessage, Expense, Group, GroupActivityLogEntry, SplitExpense, SplitParticipant } from '../constants/types';
 import { db, storage } from '../firebase/config';
-import { addChatMessage, addContributionToGroupGoal, addGroupSavingsGoal, addMembersToGroup, ChatMessage, Expense, getChatMessages, getContributionsForGroupGoal, getExpensesByGroupId, getFriends, getGroupActivityLog, getGroupDetails, getGroupSavingsGoalsByGroupId, getSplitExpensesByGroupId, Group, GroupActivityLogEntry, removeMemberFromGroup, SplitExpense, transferGroupOwnership, updateGroupDetails, updateGroupImageUrl, updateMemberRole } from '../firebase/firestore';
+import { addChatMessage, addContributionToGroupGoal, addGroupSavingsGoal, addMembersToGroup, getChatMessages, getContributionsForGroupGoal, getExpensesByGroupId, getFriends, getGroupActivityLog, getGroupDetails, getGroupSavingsGoalsByGroupId, getSplitExpensesByGroupId, removeMemberFromGroup, transferGroupOwnership, updateGroupDetails, updateGroupImageUrl, updateMemberRole, settleDebtWithWallet, requestSettlementApproval, approveSettlement, rejectSettlement, getUserProfile } from '../firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
+import AddExpensesSheet from './expenses-add';
+import SettlementModal from '../components/SettlementModal';
+import ApprovalModal from '../components/ApprovalModal';
 
 const TABS = [
   { key: 'expenses', label: 'Expenses', icon: 'currency-usd' },
@@ -54,6 +58,7 @@ export default function GroupDetailScreen() {
   const [addingGoal, setAddingGoal] = useState(false);
   const [menuVisible, setMenuVisible] = useState<{ [uid: string]: boolean }>({});
   const [loadingAction, setLoadingAction] = useState<{ [uid: string]: boolean }>({});
+  const [userProfiles, setUserProfiles] = useState<{ [uid: string]: any }>({});
   // Add state for new modal
   const [addMemberTab, setAddMemberTab] = useState<'friends' | 'email' | 'phone' | 'link'>('friends');
   const [friendsNotInGroup, setFriendsNotInGroup] = useState<any[]>([]);
@@ -82,7 +87,13 @@ export default function GroupDetailScreen() {
   const [editGroupName, setEditGroupName] = useState(group?.name || '');
   const [editGroupImage, setEditGroupImage] = useState<string | null>(group?.imageUrl || null);
   const [editGroupLoading, setEditGroupLoading] = useState(false);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false); // New state for AddExpenseModal
   const insets = useSafeAreaInsets();
+
+  // Settlement-related state
+  const [isProcessingSettlement, setIsProcessingSettlement] = useState<string | null>(null);
+  const [settlementModal, setSettlementModal] = useState<{ open: boolean; split: SplitExpense | null; participant: SplitParticipant | null }>({ open: false, split: null, participant: null });
+  const [approvalModal, setApprovalModal] = useState<{ open: boolean; split: SplitExpense | null; participant: SplitParticipant | null }>({ open: false, split: null, participant: null });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -96,6 +107,35 @@ export default function GroupDetailScreen() {
         setGroup(groupData);
         setExpenses(expensesData);
         setSplits(splitsData);
+
+        // Fetch user profiles for all participants in splits
+        if (splitsData && splitsData.length > 0) {
+          const allUserIds = new Set<string>();
+          splitsData.forEach(split => {
+            split.participants.forEach(participant => {
+              allUserIds.add(participant.userId);
+            });
+          });
+
+          const profilePromises = Array.from(allUserIds).map(async (userId) => {
+            try {
+              const profile = await getUserProfile(userId);
+              return { userId, profile };
+            } catch (error) {
+              console.error(`Failed to fetch profile for user ${userId}:`, error);
+              return { userId, profile: null };
+            }
+          });
+
+          const profileResults = await Promise.all(profilePromises);
+          const profilesMap: { [uid: string]: any } = {};
+          profileResults.forEach(({ userId, profile }) => {
+            if (profile) {
+              profilesMap[userId] = profile;
+            }
+          });
+          setUserProfiles(profilesMap);
+        }
       } catch (e) {
         Alert.alert('Error', 'Failed to load group data.');
       }
@@ -490,6 +530,90 @@ export default function GroupDetailScreen() {
     setContributionLoading(false);
   };
 
+  // Settlement handlers
+  const handleSettleWithWallet = async (splitId: string, participantId: string, amount: number, currency: string) => {
+    setIsProcessingSettlement(`${splitId}-${participantId}`);
+    try {
+      await settleDebtWithWallet(splitId, participantId);
+      setSnackbar({ visible: true, message: `Settlement Successful! You paid your share of ${currency} ${amount} from your wallet.` });
+      // Refresh splits data
+      const updatedSplits = await getSplitExpensesByGroupId(groupId as string);
+      setSplits(updatedSplits);
+    } catch (error: any) {
+      console.error("Error settling with wallet:", error);
+      setSnackbar({ visible: true, message: error.message || "Could not complete wallet settlement.", color: colors.error });
+    } finally {
+      setIsProcessingSettlement(null);
+    }
+  };
+
+  const handleRequestManualSettlement = async (splitId: string) => {
+    if (!userProfile) return;
+    setIsProcessingSettlement(splitId);
+    try {
+      await requestSettlementApproval(splitId, userProfile);
+      setSnackbar({ visible: true, message: "Request Sent! The payer has been notified to approve your manual settlement." });
+      // Refresh splits data
+      const updatedSplits = await getSplitExpensesByGroupId(groupId as string);
+      setSplits(updatedSplits);
+    } catch (error: any) {
+      console.error("Error requesting manual settlement:", error);
+      setSnackbar({ visible: true, message: error.message || "Could not send settlement request.", color: colors.error });
+    } finally {
+      setIsProcessingSettlement(null);
+    }
+  };
+
+  const handleApproveSettlement = async (splitId: string, participantId: string) => {
+    if (!userProfile) return;
+    setIsProcessingSettlement(`${splitId}-${participantId}`);
+    try {
+      await approveSettlement(splitId, participantId, userProfile);
+      setSnackbar({ visible: true, message: "Settlement Approved! The debt has been marked as settled." });
+      // Refresh splits data
+      const updatedSplits = await getSplitExpensesByGroupId(groupId as string);
+      setSplits(updatedSplits);
+    } catch (error: any) {
+      console.error("Error approving settlement:", error);
+      setSnackbar({ visible: true, message: error.message || "Could not approve the settlement.", color: colors.error });
+    } finally {
+      setIsProcessingSettlement(null);
+    }
+  };
+
+  const handleRejectSettlement = async (splitId: string, participantId: string) => {
+    if (!userProfile) return;
+    setIsProcessingSettlement(`${splitId}-${participantId}`);
+    try {
+      await rejectSettlement(splitId, participantId, userProfile);
+      setSnackbar({ visible: true, message: "Settlement Rejected! The settlement request has been rejected and the debt remains unsettled." });
+      // Refresh splits data
+      const updatedSplits = await getSplitExpensesByGroupId(groupId as string);
+      setSplits(updatedSplits);
+    } catch (error: any) {
+      console.error("Error rejecting settlement:", error);
+      setSnackbar({ visible: true, message: error.message || "Could not reject the settlement.", color: colors.error });
+    } finally {
+      setIsProcessingSettlement(null);
+    }
+  };
+
+  const openSettlementModal = (split: SplitExpense, participant: SplitParticipant) => {
+    setSettlementModal({ open: true, split, participant });
+  };
+
+  const closeSettlementModal = () => {
+    setSettlementModal({ open: false, split: null, participant: null });
+  };
+
+  const openApprovalModal = (split: SplitExpense, participant: SplitParticipant) => {
+    setApprovalModal({ open: true, split, participant });
+  };
+
+  const closeApprovalModal = () => {
+    setApprovalModal({ open: false, split: null, participant: null });
+  };
+
   if (loading) {
     return <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator animating color={colors.primary} size="large" /><Text>Loading...</Text></Surface>;
   }
@@ -657,15 +781,26 @@ export default function GroupDetailScreen() {
                       <View style={{ alignItems: 'flex-end', marginLeft: 12 }}>
                         <Text style={{ fontWeight: 'bold', fontSize: 16, color: colors.primary, marginBottom: 8 }}>{exp.currency} {exp.amount}</Text>
                         <Button mode="outlined" icon="pencil" compact onPress={() => router.push(`/expenses-edit?expenseId=${exp.id}`)} style={{ borderRadius: 8, borderColor: colors.outline }} labelStyle={{ fontSize: 13 }}>
-                          Edit Split
+                          Edit Expense
                         </Button>
                       </View>
                     </View>
                   ))
                 )}
-                <Button mode="contained" icon="plus" style={{ marginTop: 16, borderRadius: 8, backgroundColor: colors.primary }} contentStyle={{ height: 48 }} labelStyle={{ fontWeight: 'bold', fontSize: 16 }} onPress={() => router.push(`/expenses-add?groupId=${group.id}`)}>
+                <Button mode="contained" icon="plus" style={{ marginTop: 16, borderRadius: 8, backgroundColor: colors.primary }} contentStyle={{ height: 48 }} labelStyle={{ fontWeight: 'bold', fontSize: 16 }} onPress={() => setShowAddExpenseModal(true)}>
                   Add New Expense to This Group
                 </Button>
+                <Portal>
+                  <Dialog visible={showAddExpenseModal} onDismiss={() => setShowAddExpenseModal(false)} style={{ borderRadius: 20, padding: 0, overflow: 'hidden' }}>
+                    <Dialog.Content style={{ paddingTop: 0 }}>
+                      <AddExpensesSheet
+                        groupId={group.id}
+                        onClose={() => setShowAddExpenseModal(false)}
+                        visible={showAddExpenseModal}
+                      />
+                    </Dialog.Content>
+                  </Dialog>
+                </Portal>
               </Card.Content>
             </Card>
           </ScrollView>
@@ -685,27 +820,223 @@ export default function GroupDetailScreen() {
                 {splits.length === 0 ? (
                   <Text style={{ color: colors.outline, textAlign: 'center', marginVertical: 32 }}>No splits yet.</Text>
                 ) : (
-                  splits.map(split => (
-                    <View key={split.id} style={{ backgroundColor: colors.elevation.level1, borderRadius: 12, padding: 16, marginBottom: 18 }}>
-                      <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 2, color: colors.onSurface }}>{split.originalExpenseDescription}</Text>
-                      <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, marginBottom: 8 }}>Total: {split.currency} {split.totalAmount} | Paid by: {split.paidBy === (authUser?.uid || 'demo-user-id') ? 'You' : (group.memberDetails.find((m: any) => m.uid === split.paidBy)?.displayName || 'User')}</Text>
-                      {split.participants.map((p, i) => (
-                        <View key={p.userId} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, backgroundColor: colors.elevation.level1, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10 }}>
-                          <Avatar.Text size={28} label={p.displayName ? p.displayName[0] : '?'} style={{ marginRight: 10, backgroundColor: colors.elevation.level2 }} />
-                          <Text style={{ fontWeight: p.userId === (authUser?.uid || 'demo-user-id') ? 'bold' : 'normal', fontSize: 15, marginRight: 4 }}>{p.userId === (authUser?.uid || 'demo-user-id') ? 'You' : p.displayName}</Text>
-                          <Text style={{ color: colors.onSurfaceVariant, fontSize: 14, marginRight: 8 }}>owes {split.currency} {p.amountOwed}</Text>
-                          {p.settlementStatus === 'settled' ? (
-                            <View style={{ backgroundColor: '#22c55e', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 2, marginLeft: 4 }}>
-                              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Settled</Text>
-                            </View>
-                          ) : (
-                            <View style={{ backgroundColor: colors.elevation.level2, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 2, marginLeft: 4 }}>
-                              <Text style={{ color: colors.onSurface, fontWeight: 'bold', fontSize: 13 }}>Owes</Text>
-                            </View>
-                          )}
+                  splits.map((split: SplitExpense) => (
+                    <Card key={split.id} style={{
+                      backgroundColor: colors.surface,
+                      borderRadius: 20,
+                      marginBottom: 20,
+                      elevation: 6,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.12,
+                      shadowRadius: 12,
+                      borderWidth: 1,
+                      borderColor: colors.outline + '15'
+                    }}>
+                      <Card.Content style={{ padding: 24 }}>
+                        {/* Header Section */}
+                        <View style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          marginBottom: 20,
+                          paddingBottom: 16,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.outline + '20'
+                        }}>
+                          <View style={{
+                            backgroundColor: colors.primary + '15',
+                            borderRadius: 16,
+                            padding: 12,
+                            marginRight: 16
+                          }}>
+                            <Ionicons name="receipt-outline" size={28} color={colors.primary} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{
+                              fontWeight: 'bold',
+                              fontSize: 20,
+                              color: colors.onSurface,
+                              marginBottom: 4
+                            }}>
+                              {split.originalExpenseDescription}
+                            </Text>
+                            <Text style={{
+                              color: colors.onSurfaceVariant,
+                              fontSize: 14,
+                              lineHeight: 20
+                            }}>
+                              Total: {split.currency} {split.totalAmount} • Paid by: {split.paidBy === (authUser?.uid || 'demo-user-id') ? 'You' : (group.memberDetails.find((m: any) => m.uid === split.paidBy)?.displayName || 'User')}
+                            </Text>
+                          </View>
                         </View>
-                      ))}
-                    </View>
+
+                        {/* Participants Section */}
+                        <View style={{ gap: 16 }}>
+                          {split.participants.map((p: SplitParticipant, i: number) => {
+                            const isCurrentUser = p.userId === (authUser?.uid || 'demo-user-id');
+                            const currentUserIsPayer = split.paidBy === (authUser?.uid || 'demo-user-id');
+                            const owesMoney = p.amountOwed > 0;
+                            
+                            return (
+                              <View key={p.userId} style={{
+                                backgroundColor: colors.elevation.level1,
+                                borderRadius: 18,
+                                padding: 20,
+                                borderWidth: 1,
+                                borderColor: colors.outline + '20',
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.06,
+                                shadowRadius: 8,
+                                elevation: 3,
+                              }}>
+                                {/* Participant Header */}
+                                <View style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  marginBottom: 16
+                                }}>
+                                  <View style={{
+                                    backgroundColor: isCurrentUser ? colors.primary + '20' : colors.elevation.level2,
+                                    borderRadius: 28,
+                                    padding: 12,
+                                    marginRight: 16
+                                  }}>
+                                    {userProfiles[p.userId]?.photoURL ? (
+                                      <Avatar.Image
+                                        size={32}
+                                        source={{ uri: userProfiles[p.userId].photoURL }}
+                                        style={{
+                                          backgroundColor: isCurrentUser ? colors.primary : colors.elevation.level3
+                                        }}
+                                      />
+                                    ) : (
+                                      <Avatar.Text
+                                        size={32}
+                                        label={p.displayName ? p.displayName[0] : '?'}
+                                        style={{
+                                          backgroundColor: isCurrentUser ? colors.primary : colors.elevation.level3
+                                        }}
+                                      />
+                                    )}
+                                  </View>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                      fontWeight: isCurrentUser ? 'bold' : '600',
+                                      fontSize: 18,
+                                      color: colors.onSurface,
+                                      marginBottom: 4
+                                    }}>
+                                      {isCurrentUser ? 'You' : p.displayName}
+                                    </Text>
+                                    <Text style={{
+                                      color: colors.onSurfaceVariant,
+                                      fontSize: 16,
+                                      fontWeight: '500'
+                                    }}>
+                                      owes {split.currency} {p.amountOwed}
+                                    </Text>
+                                  </View>
+                                  {/* Settled Status - Top Right Corner */}
+                                  {p.settlementStatus === 'settled' && (
+                                    <View style={{
+                                      backgroundColor: '#22c55e',
+                                      borderRadius: 12,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 4,
+                                      alignSelf: 'flex-start'
+                                    }}>
+                                      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>SETTLED</Text>
+                                    </View>
+                                  )}
+                                  {p.settlementStatus === 'pending_approval' && (
+                                    <View style={{
+                                      backgroundColor: '#f59e0b',
+                                      borderRadius: 12,
+                                      paddingHorizontal: 8,
+                                      paddingVertical: 4,
+                                      alignSelf: 'flex-start'
+                                    }}>
+                                      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>PENDING</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                
+                                {/* Action Section - Bottom Right */}
+                                <View style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  justifyContent: 'flex-end'
+                                }}>
+                                  {p.settlementStatus === 'pending_approval' ? (
+                                    currentUserIsPayer ? (
+                                      <Button
+                                        mode="contained"
+                                        onPress={() => openApprovalModal(split, p)}
+                                        disabled={isProcessingSettlement === `${split.id}-${p.userId}`}
+                                        style={{
+                                          borderRadius: 16,
+                                          backgroundColor: colors.primary,
+                                          elevation: 2,
+                                          alignSelf: 'flex-end'
+                                        }}
+                                        contentStyle={{ paddingVertical: 6 }}
+                                        labelStyle={{ fontSize: 12, fontWeight: '600' }}
+                                        compact
+                                        icon="eye"
+                                      >
+                                        Review
+                                      </Button>
+                                    ) : (
+                                      <View style={{
+                                        backgroundColor: colors.elevation.level2,
+                                        borderRadius: 16,
+                                        paddingHorizontal: 12,
+                                        paddingVertical: 6,
+                                        flexDirection: 'row',
+                                        alignItems: 'center'
+                                      }}>
+                                        <Ionicons name="time" size={14} color={colors.onSurfaceVariant} style={{ marginRight: 6 }} />
+                                        <Text style={{ color: colors.onSurface, fontWeight: '600', fontSize: 12 }}>Waiting for approval</Text>
+                                      </View>
+                                    )
+                                  ) : p.settlementStatus !== 'settled' && owesMoney && isCurrentUser ? (
+                                    <Button
+                                      mode="contained"
+                                      onPress={() => openSettlementModal(split, p)}
+                                      disabled={isProcessingSettlement === `${split.id}-${p.userId}`}
+                                      style={{
+                                        borderRadius: 20,
+                                        backgroundColor: colors.primary,
+                                        elevation: 2,
+                                        alignSelf: 'flex-end'
+                                      }}
+                                      contentStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
+                                      labelStyle={{ fontSize: 12, fontWeight: '600' }}
+                                      compact
+                                    >
+                                      Settle Up
+                                    </Button>
+                                  ) : p.settlementStatus !== 'settled' ? (
+                                    <View style={{
+                                      backgroundColor: colors.elevation.level2,
+                                      borderRadius: 16,
+                                      paddingHorizontal: 12,
+                                      paddingVertical: 6,
+                                      flexDirection: 'row',
+                                      alignItems: 'center'
+                                    }}>
+                                      <Ionicons name="alert-circle" size={14} color={colors.onSurfaceVariant} style={{ marginRight: 6 }} />
+                                      <Text style={{ color: colors.onSurface, fontWeight: '600', fontSize: 12 }}>Owes</Text>
+                                    </View>
+                                  ) : null}
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </Card.Content>
+                    </Card>
                   ))
                 )}
               </Card.Content>
@@ -1238,6 +1569,208 @@ export default function GroupDetailScreen() {
         visible
         label="Split Expense"
       /> */}
+
+        {/* Settlement Modal */}
+        <Portal>
+          <Dialog visible={settlementModal.open} onDismiss={closeSettlementModal} style={{ borderRadius: 24 }}>
+            <Dialog.Title style={{ 
+              fontWeight: 'bold', 
+              fontSize: 24, 
+              textAlign: 'center', 
+              marginBottom: 12, 
+              color: colors.primary 
+            }}>
+              Settle Your Debt
+            </Dialog.Title>
+            <Dialog.Content style={{ paddingHorizontal: 28, paddingTop: 0 }}>
+              <Text style={{ 
+                color: colors.onSurfaceVariant, 
+                fontSize: 17, 
+                marginBottom: 24,
+                textAlign: 'center',
+                lineHeight: 24
+              }}>
+                Choose how you want to settle your debt of{' '}
+                <Text style={{ fontWeight: 'bold', color: colors.primary, fontSize: 20 }}>
+                  {settlementModal.split?.currency} {settlementModal.participant?.amountOwed}
+                </Text>
+                {' '}with{' '}
+                <Text style={{ fontWeight: '600', color: colors.onSurface }}>
+                  {settlementModal.split?.participants.find(p => p.userId === settlementModal.split?.paidBy)?.displayName || 'the payer'}
+                </Text>
+              </Text>
+              
+              <View style={{ gap: 20 }}>
+                <Button 
+                  mode="contained" 
+                  onPress={() => {
+                    if (settlementModal.split && settlementModal.participant) {
+                      handleSettleWithWallet(
+                        settlementModal.split.id!, 
+                        settlementModal.participant.userId, 
+                        settlementModal.participant.amountOwed, 
+                        settlementModal.split.currency
+                      );
+                      closeSettlementModal();
+                    }
+                  }}
+                  disabled={isProcessingSettlement === `${settlementModal.split?.id}-${settlementModal.participant?.userId}`}
+                  style={{ 
+                    borderRadius: 20, 
+                    backgroundColor: colors.primary,
+                    elevation: 4
+                  }}
+                  contentStyle={{ paddingVertical: 16 }}
+                  labelStyle={{ fontSize: 17, fontWeight: '600' }}
+                  icon="wallet"
+                >
+                  {isProcessingSettlement === `${settlementModal.split?.id}-${settlementModal.participant?.userId}` ? 'Processing...' : 'Pay with Wallet'}
+                </Button>
+                
+                <Button 
+                  mode="outlined" 
+                  onPress={() => {
+                    if (settlementModal.split) {
+                      handleRequestManualSettlement(settlementModal.split.id!);
+                      closeSettlementModal();
+                    }
+                  }}
+                  disabled={isProcessingSettlement === settlementModal.split?.id}
+                  loading={isProcessingSettlement === settlementModal.split?.id}
+                  style={{ 
+                    borderRadius: 20, 
+                    borderColor: colors.outline,
+                    borderWidth: 2,
+                    elevation: 2
+                  }}
+                  contentStyle={{ paddingVertical: 16 }}
+                  labelStyle={{ fontSize: 17, fontWeight: '600' }}
+                  icon="handshake"
+                >
+                  {isProcessingSettlement === settlementModal.split?.id ? 'Processing...' : 'I Paid Manually'}
+                </Button>
+                
+                <View style={{ 
+                  backgroundColor: colors.elevation.level1, 
+                  borderRadius: 16, 
+                  padding: 20,
+                  marginTop: 8
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                    <View style={{ 
+                      backgroundColor: colors.primary + '20', 
+                      borderRadius: 12, 
+                      padding: 8, 
+                      marginRight: 12 
+                    }}>
+                      <Text style={{ color: colors.primary, fontSize: 18 }}>💡</Text>
+                    </View>
+                    <Text style={{ 
+                      fontWeight: '600', 
+                      fontSize: 16, 
+                      color: colors.onSurface 
+                    }}>
+                      What's the difference?
+                    </Text>
+                  </View>
+                  <Text style={{ 
+                    color: colors.onSurfaceVariant, 
+                    fontSize: 14, 
+                    lineHeight: 20 
+                  }}>
+                    <Text style={{ fontWeight: '600' }}>Pay with Wallet:</Text> Instant settlement using your wallet funds.{'\n\n'}
+                    <Text style={{ fontWeight: '600' }}>I Paid Manually:</Text> Notify the payer to confirm they received your payment outside the app.
+                  </Text>
+                </View>
+              </View>
+            </Dialog.Content>
+            <Dialog.Actions style={{ paddingHorizontal: 28, paddingBottom: 28 }}>
+              <Button 
+                mode="text" 
+                onPress={closeSettlementModal}
+                style={{ borderRadius: 16 }}
+                labelStyle={{ fontSize: 17, fontWeight: '600' }}
+              >
+                Cancel
+              </Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
+
+        {/* Approval Modal */}
+        <Portal>
+          <Dialog visible={approvalModal.open} onDismiss={closeApprovalModal} style={{ borderRadius: 24 }}>
+            <Dialog.Title style={{ 
+              fontWeight: 'bold', 
+              fontSize: 22, 
+              textAlign: 'center',
+              marginBottom: 8,
+              color: colors.primary
+            }}>
+              Approve Manual Settlement?
+            </Dialog.Title>
+            <Dialog.Content style={{ paddingHorizontal: 28, paddingTop: 0 }}>
+              <Text style={{ 
+                color: colors.onSurfaceVariant, 
+                fontSize: 16, 
+                marginBottom: 24,
+                textAlign: 'center',
+                lineHeight: 22
+              }}>
+                {approvalModal.participant?.displayName || 'A participant'} has claimed they paid you{' '}
+                <Text style={{ fontWeight: 'bold', color: colors.primary, fontSize: 18 }}>
+                  {approvalModal.split?.currency} {approvalModal.participant?.amountOwed}
+                </Text>
+                {' '}outside the app. Do you approve this settlement?
+              </Text>
+            </Dialog.Content>
+            <Dialog.Actions style={{ paddingHorizontal: 28, paddingBottom: 28, gap: 12 }}>
+              <Button 
+                mode="outlined" 
+                onPress={() => {
+                  if (approvalModal.split && approvalModal.participant) {
+                    handleRejectSettlement(approvalModal.split.id!, approvalModal.participant.userId);
+                    closeApprovalModal();
+                  }
+                }}
+                disabled={isProcessingSettlement === `${approvalModal.split?.id}-${approvalModal.participant?.userId}`}
+                style={{ 
+                  borderColor: colors.error,
+                  borderRadius: 20,
+                  borderWidth: 2,
+                  flex: 1
+                }}
+                textColor={colors.error}
+                loading={isProcessingSettlement === `${approvalModal.split?.id}-${approvalModal.participant?.userId}`}
+                contentStyle={{ paddingVertical: 12 }}
+                labelStyle={{ fontSize: 15, fontWeight: '600' }}
+              >
+                {isProcessingSettlement === `${approvalModal.split?.id}-${approvalModal.participant?.userId}` ? 'Rejecting...' : 'Reject'}
+              </Button>
+              <Button 
+                mode="contained" 
+                onPress={() => {
+                  if (approvalModal.split && approvalModal.participant) {
+                    handleApproveSettlement(approvalModal.split.id!, approvalModal.participant.userId);
+                    closeApprovalModal();
+                  }
+                }}
+                disabled={isProcessingSettlement === `${approvalModal.split?.id}-${approvalModal.participant?.userId}`}
+                loading={isProcessingSettlement === `${approvalModal.split?.id}-${approvalModal.participant?.userId}`}
+                style={{ 
+                  borderRadius: 20,
+                  backgroundColor: colors.primary,
+                  elevation: 3,
+                  flex: 1
+                }}
+                contentStyle={{ paddingVertical: 12 }}
+                labelStyle={{ fontSize: 15, fontWeight: '600' }}
+              >
+                {isProcessingSettlement === `${approvalModal.split?.id}-${approvalModal.participant?.userId}` ? 'Approving...' : 'Approve'}
+              </Button>
+            </Dialog.Actions>
+          </Dialog>
+        </Portal>
     </Surface>
   );
 } 

@@ -5,10 +5,14 @@ import { format } from 'date-fns';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, FlatList, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, Button, Card, Chip, Dialog, Divider, FAB, IconButton, Menu, Paragraph, Portal, Surface, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Chip, Dialog, Divider, FAB, IconButton, Menu, Paragraph, Portal, Surface, Text, TextInput, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { deleteExpense, getExpensesByUser, getGroupsForUser, getSplitExpensesForUser } from '../../firebase/firestore';
+import { ModernButton } from '../../components/ui/ModernButton';
+import { ModernCard } from '../../components/ui/ModernCard';
+import { deleteExpense, getExpensesByUser, getGroupsForUser, getSplitExpensesForUser, updateExpense } from '../../firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
+import AddExpensesSheet from '../expenses-add';
+import ExpensesEditModal from '../expenses-edit-modal';
 
 const BOTTOM_SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.68);
 
@@ -21,6 +25,14 @@ export default function ExpensesScreen() {
   const { colors, dark } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  // Add sheet state
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
+  
+  // Edit sheet state
+  const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const [editExpense, setEditExpense] = useState<any>(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   // Filter/Sort State
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
@@ -43,6 +55,8 @@ export default function ExpensesScreen() {
   const [categoryMenuVisible, setCategoryMenuVisible] = useState(false);
   const [groupMenuVisible, setGroupMenuVisible] = useState(false);
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
+
+
 
   // Unique categories/currencies/groups for dropdowns
   const uniqueCategories = Array.from(new Set(expenses.map(e => e.category))).filter(Boolean);
@@ -142,68 +156,133 @@ export default function ExpensesScreen() {
     }
   };
 
+  const handleEditSave = async (updatedExpense: any) => {
+    setEditLoading(true);
+    try {
+      // Update the expense in Firebase
+      await updateExpense(editExpense.id, updatedExpense);
+      setEditSheetOpen(false);
+      setEditExpense(null);
+      fetchData();
+    } catch (e) {
+      Alert.alert('Error', 'Failed to update expense.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // In renderExpense, pass the entire expense object:
   const renderExpense = ({ item }: { item: any }) => {
     const group = item.groupId ? groups.find((g: any) => g.id === item.groupId) : null;
     return (
-      <Card style={[styles.card, { backgroundColor: colors.elevation?.level1 || colors.surface, borderColor: colors.outline, shadowColor: colors.shadow || '#000' }] }>
-        <Card.Title
-          title={item.description || 'Expense'}
-          subtitle={item.category || 'Uncategorized'}
-          titleStyle={{ color: colors.onSurface, fontWeight: 'bold', fontSize: 18 }}
-          subtitleStyle={{ color: colors.onSurfaceVariant, fontSize: 14 }}
-          right={() => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {item.isSplitShare && <Chip style={{ backgroundColor: colors.secondaryContainer, marginRight: 4 }} textStyle={{ color: colors.onSecondaryContainer, fontSize: 12 }}>Shared</Chip>}
-              <IconButton icon="pencil" size={20} onPress={() => router.push(`/expenses-edit?expenseId=${item.id}`)} />
-              <IconButton icon="delete" size={20} onPress={() => setDeleteDialog({ open: true, expenseId: item.id })} />
-            </View>
-          )}
-        />
-        <Card.Content>
-          <View style={styles.row}>
-            <View style={styles.rowItem}>
-              <MaterialCommunityIcons name="currency-usd" size={18} color={colors.primary} style={{ marginRight: 4 }} />
-              <Text style={[styles.amount, { color: colors.onSurface }]}>{item.amount} {item.currency}</Text>
-            </View>
-            <View style={styles.rowItem}>
-              <MaterialCommunityIcons name="calendar" size={16} color={colors.onSurfaceVariant} style={{ marginRight: 2 }} />
-              <Text style={[styles.date, { color: colors.onSurfaceVariant }]}>
-                {item.date && !isNaN(new Date(item.date).getTime())
-                  ? format(new Date(item.date), 'MMM dd, yyyy')
-                  : 'No date'}
-              </Text>
-            </View>
+      <ModernCard
+        style={{
+          backgroundColor: colors.elevation.level1,
+          borderColor: colors.outlineVariant || colors.outline,
+          shadowColor: colors.shadow || '#000',
+          borderRadius: 16, // Apply directly here
+          marginBottom: 16, // Apply directly here
+          elevation: 4, // Apply directly here
+          shadowOpacity: 0.08, // Apply directly here
+          shadowRadius: 8, // Apply directly here
+          borderWidth: 1, // Apply directly here
+          padding: 16, // Apply directly here
+        }}
+      >
+        <View style={styles.expenseHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.expenseTitle, { color: colors.onSurface }]}>
+              {item.description || 'Expense'}
+            </Text>
+            <Text style={[styles.expenseCategory, { color: colors.primary }]}>
+              {item.category || 'Uncategorized'}
+            </Text>
           </View>
-          {group && (
-            <Chip icon="account-group" style={[styles.chip, { backgroundColor: colors.primaryContainer, marginBottom: 4 }]} textStyle={{ color: colors.onPrimaryContainer }}>{group.name}</Chip>
-          )}
-          {item.tags && item.tags.length > 0 && (
-            <View style={styles.tagsRow}>
-              {item.tags.map((tag: string) => (
-                <Chip key={tag} style={[styles.tagChip, { backgroundColor: colors.secondaryContainer }]} textStyle={{ color: colors.onSecondaryContainer }}>{tag}</Chip>
-              ))}
-            </View>
-          )}
-          {item.isRecurring && item.recurrence && item.recurrence !== 'none' && (
-            <Chip icon="repeat" style={[styles.chip, { backgroundColor: colors.tertiaryContainer }]} textStyle={{ color: colors.onTertiaryContainer }}>{item.recurrence}</Chip>
-          )}
-          {item.notes && (
-            <View style={styles.notesRow}>
-              <MaterialCommunityIcons name="note-text-outline" size={16} color={colors.onSurfaceVariant} style={{ marginRight: 4 }} />
-              <Text style={[styles.notes, { color: colors.onSurfaceVariant }]}>{item.notes}</Text>
-            </View>
-          )}
-        </Card.Content>
-        <Divider style={{ marginVertical: 4, backgroundColor: colors.outlineVariant || colors.outline }} />
-      </Card>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <IconButton
+              icon="pencil"
+              size={20}
+              onPress={() => {
+                setEditExpense(item);
+                setEditSheetOpen(true);
+              }}
+              iconColor={colors.primary}
+            />
+            <IconButton
+              icon="delete"
+              size={20}
+              onPress={() => setDeleteDialog({ open: true, expenseId: item.id })}
+              iconColor={colors.error}
+            />
+          </View>
+        </View>
+        <Divider style={{ marginVertical: 6, backgroundColor: colors.outlineVariant || colors.outline }} />
+        <View style={styles.row}>
+          <View style={styles.rowItem}>
+            <MaterialCommunityIcons name="currency-usd" size={20} color={colors.primary} style={{ marginRight: 4 }} />
+            <Text style={[styles.amount, { color: colors.primary }]}>{item.amount} {item.currency}</Text>
+          </View>
+          <View style={styles.rowItem}>
+            <MaterialCommunityIcons name="calendar" size={16} color={colors.onSurfaceVariant} style={{ marginRight: 2 }} />
+            <Text style={[styles.date, { color: colors.onSurfaceVariant }]}>
+              {item.date && !isNaN(new Date(item.date).getTime())
+                ? format(new Date(item.date), 'MMM dd, yyyy')
+                : 'No date'}
+            </Text>
+          </View>
+        </View>
+        {group && (
+          <Chip
+            icon="account-group"
+            style={[
+              styles.chip,
+              { backgroundColor: colors.primaryContainer, marginBottom: 4 },
+            ]}
+            textStyle={{ color: colors.onPrimaryContainer }}
+          >
+            {group.name}
+          </Chip>
+        )}
+        {item.tags && item.tags.length > 0 && (
+          <View style={styles.tagsRow}>
+            {item.tags.map((tag: string) => (
+              <Chip
+                key={tag}
+                style={[
+                  styles.tagChip,
+                  { backgroundColor: colors.secondaryContainer },
+                ]}
+                textStyle={{ color: colors.onSecondaryContainer }}
+              >
+                {tag}
+              </Chip>
+            ))}
+          </View>
+        )}
+        {item.isRecurring && item.recurrence && item.recurrence !== 'none' && (
+          <Chip
+            icon="repeat"
+            style={[
+              styles.chip,
+              { backgroundColor: colors.tertiaryContainer },
+            ]}
+            textStyle={{ color: colors.onTertiaryContainer }}
+          >
+            {item.recurrence}
+          </Chip>
+        )}
+        {item.notes && (
+          <View style={styles.notesRow}>
+            <MaterialCommunityIcons name="note-text-outline" size={16} color={colors.onSurfaceVariant} style={{ marginRight: 4 }} />
+            <Text style={[styles.notes, { color: colors.onSurfaceVariant }]}>{item.notes}</Text>
+          </View>
+        )}
+      </ModernCard>
     );
   };
 
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['68%'], []);
-
-  const testSheetRef = useRef<BottomSheet>(null);
-  const testSnapPoints = useMemo(() => ['30%'], []);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -212,6 +291,8 @@ export default function ExpensesScreen() {
     await fetchData();
     setRefreshing(false);
   }, [fetchData]);
+
+
 
   return (
     <Surface style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
@@ -224,19 +305,13 @@ export default function ExpensesScreen() {
         <View style={styles.headerContainer}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
-              <Text variant="headlineLarge" style={styles.headerTitle}>My Expenses</Text>
-              <Text style={styles.headerSubtitle}>View and manage your recorded expenses.</Text>
+              <Text variant="headlineLarge" style={[styles.headerTitle, { color: colors.onBackground }]}>My Expenses</Text>
+              <Text style={[styles.headerSubtitle, { color: colors.onSurfaceVariant }]}>View and manage your recorded expenses.</Text>
             </View>
             <IconButton icon="filter-variant" size={28} onPress={() => {
-              console.log('[Filter] Filter button pressed');
               setFilterSheetOpen(true);
-              if (bottomSheetRef.current) {
-                console.log('[Filter] Expanding bottom sheet');
-                bottomSheetRef.current.expand();
-              } else {
-                console.log('[Filter] bottomSheetRef.current is null');
-              }
-            }} style={{ marginLeft: 8 }} />
+              if (bottomSheetRef.current) bottomSheetRef.current.expand();
+            }} style={{ marginLeft: 8 }} iconColor={colors.primary} />
           </View>
         </View>
         {fetchError && <Text style={{ color: colors.error, textAlign: 'center', marginVertical: 8 }}>{fetchError}</Text>}
@@ -244,8 +319,9 @@ export default function ExpensesScreen() {
           <View style={styles.loadingContainer}><ActivityIndicator size="large" color={colors.primary} /></View>
         ) : filteredExpenses.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No expenses match your filters.</Text>
-            <Button mode="contained" icon="plus" onPress={() => router.push('/expenses-add')}>Add Expense</Button>
+            <MaterialCommunityIcons name="file-document-outline" size={60} color={colors.primary + (dark ? '55' : '99')} style={{ marginBottom: 12 }} />
+            <Text style={[styles.emptyText, { color: colors.onSurfaceVariant }]}>No expenses match your filters.</Text>
+            <ModernButton variant="primary" icon="plus" onPress={() => setAddSheetOpen(true)} title="Add Expense" style={{ marginTop: 8, borderRadius: 16, minWidth: 160 }} />
           </View>
         ) : (
           <FlatList
@@ -256,25 +332,19 @@ export default function ExpensesScreen() {
             scrollEnabled={false}
           />
         )}
-        <FAB
-          icon="plus"
-          style={[styles.fab, { bottom: 32 + insets.bottom }]}
-          color={colors.onPrimary}
-          onPress={() => router.push('/expenses-add')}
-          visible
-        />
-        <BottomSheet
-          ref={bottomSheetRef}
-          index={filterSheetOpen ? 0 : -1}
-          snapPoints={snapPoints}
-          enablePanDownToClose
-          onClose={() => setFilterSheetOpen(false)}
-          backdropComponent={props => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />}
-          backgroundStyle={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}
-          handleIndicatorStyle={{ backgroundColor: colors.outlineVariant || '#ccc', width: 44, height: 5, borderRadius: 3, marginTop: 8 }}
-          style={{ zIndex: 100 }}
-          onChange={index => console.log('[Filter] BottomSheet index changed:', index)}
-        >
+        {filterSheetOpen && (
+          <BottomSheet
+            ref={bottomSheetRef}
+            index={0}
+            snapPoints={snapPoints}
+            enablePanDownToClose
+            onClose={() => setFilterSheetOpen(false)}
+            backdropComponent={props => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />}
+            backgroundStyle={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}
+            handleIndicatorStyle={{ backgroundColor: colors.outlineVariant || '#ccc', width: 44, height: 5, borderRadius: 3, marginTop: 8 }}
+            style={{ zIndex: 100 }}
+            onChange={index => console.log('[Filter] BottomSheet index changed:', index)}
+          >
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
             <Text style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 20, marginBottom: 8 }}>Filter & Sort</Text>
             {/* Search */}
@@ -282,18 +352,18 @@ export default function ExpensesScreen() {
               label="Search"
               value={filters.searchTerm}
               onChangeText={v => setFilters(f => ({ ...f, searchTerm: v }))}
-              style={{ marginBottom: 18, borderRadius: 12 }}
+              style={{ marginBottom: 16, borderRadius: 12, backgroundColor: colors.surface }}
               left={<TextInput.Icon icon="magnify" />}
               mode="outlined"
             />
             {/* Amount Row */}
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
               <TextInput
                 label="Min Amount"
                 value={filters.minAmount}
                 onChangeText={v => setFilters(f => ({ ...f, minAmount: v }))}
                 keyboardType="numeric"
-                style={{ flex: 1, borderRadius: 12 }}
+                style={{ flex: 1, borderRadius: 12, backgroundColor: colors.surface }}
                 left={<TextInput.Icon icon="arrow-down" />}
                 mode="outlined"
               />
@@ -302,19 +372,19 @@ export default function ExpensesScreen() {
                 value={filters.maxAmount}
                 onChangeText={v => setFilters(f => ({ ...f, maxAmount: v }))}
                 keyboardType="numeric"
-                style={{ flex: 1, borderRadius: 12 }}
+                style={{ flex: 1, borderRadius: 12, backgroundColor: colors.surface }}
                 left={<TextInput.Icon icon="arrow-up" />}
                 mode="outlined"
               />
             </View>
             {/* Date Row */}
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 18 }}>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
               <TouchableOpacity style={{ flex: 1 }} onPress={() => setShowStartDate(true)}>
                 <TextInput
                   label="Start Date"
                   value={filters.startDate}
                   editable={false}
-                  style={{ borderRadius: 12 }}
+                  style={{ borderRadius: 12, backgroundColor: colors.surface }}
                   left={<TextInput.Icon icon="calendar" />}
                   mode="outlined"
                 />
@@ -324,7 +394,7 @@ export default function ExpensesScreen() {
                   label="End Date"
                   value={filters.endDate}
                   editable={false}
-                  style={{ borderRadius: 12 }}
+                  style={{ borderRadius: 12, backgroundColor: colors.surface }}
                   left={<TextInput.Icon icon="calendar" />}
                   mode="outlined"
                 />
@@ -353,14 +423,14 @@ export default function ExpensesScreen() {
               />
             )}
             {/* Dropdowns */}
-            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 4, marginTop: 8 }}>Currency</Text>
+            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 8, marginTop: 8 }}>Currency</Text>
             <Menu
               visible={currencyMenuVisible}
               onDismiss={() => setCurrencyMenuVisible(false)}
               anchor={
                 <Button
                   mode="outlined"
-                  style={{ borderRadius: 12, marginBottom: 12, justifyContent: 'flex-start' }}
+                  style={{ borderRadius: 12, marginBottom: 16, justifyContent: 'flex-start', backgroundColor: colors.surface }}
                   icon="currency-usd"
                   onPress={() => setCurrencyMenuVisible(true)}
                   contentStyle={{ flexDirection: 'row-reverse' }}
@@ -374,14 +444,14 @@ export default function ExpensesScreen() {
                 <Menu.Item key={curr} onPress={() => { setFilters(f => ({ ...f, currency: curr })); setCurrencyMenuVisible(false); }} title={curr} />
               ))}
             </Menu>
-            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 4, marginTop: 8 }}>Category</Text>
+            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 8, marginTop: 8 }}>Category</Text>
             <Menu
               visible={categoryMenuVisible}
               onDismiss={() => setCategoryMenuVisible(false)}
               anchor={
                 <Button
                   mode="outlined"
-                  style={{ borderRadius: 12, marginBottom: 12, justifyContent: 'flex-start' }}
+                  style={{ borderRadius: 12, marginBottom: 16, justifyContent: 'flex-start', backgroundColor: colors.surface }}
                   icon="tag"
                   onPress={() => setCategoryMenuVisible(true)}
                   contentStyle={{ flexDirection: 'row-reverse' }}
@@ -395,14 +465,14 @@ export default function ExpensesScreen() {
                 <Menu.Item key={cat} onPress={() => { setFilters(f => ({ ...f, category: cat })); setCategoryMenuVisible(false); }} title={cat} />
               ))}
             </Menu>
-            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 4, marginTop: 8 }}>Group</Text>
+            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 8, marginTop: 8 }}>Group</Text>
             <Menu
               visible={groupMenuVisible}
               onDismiss={() => setGroupMenuVisible(false)}
               anchor={
                 <Button
                   mode="outlined"
-                  style={{ borderRadius: 12, marginBottom: 12, justifyContent: 'flex-start' }}
+                  style={{ borderRadius: 12, marginBottom: 16, justifyContent: 'flex-start', backgroundColor: colors.surface }}
                   icon="account-group"
                   onPress={() => setGroupMenuVisible(true)}
                   contentStyle={{ flexDirection: 'row-reverse' }}
@@ -418,14 +488,14 @@ export default function ExpensesScreen() {
               ))}
             </Menu>
             {/* Sort Section */}
-            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 4, marginTop: 8 }}>Sort By</Text>
+            <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginBottom: 8, marginTop: 8 }}>Sort By</Text>
             <Menu
               visible={sortMenuVisible}
               onDismiss={() => setSortMenuVisible(false)}
               anchor={
                 <Button
                   mode="outlined"
-                  style={{ borderRadius: 12, marginBottom: 12, justifyContent: 'flex-start' }}
+                  style={{ borderRadius: 12, marginBottom: 16, justifyContent: 'flex-start', backgroundColor: colors.surface }}
                   icon="sort"
                   onPress={() => setSortMenuVisible(true)}
                   contentStyle={{ flexDirection: 'row-reverse' }}
@@ -438,7 +508,7 @@ export default function ExpensesScreen() {
               <Menu.Item onPress={() => { setSort(s => ({ ...s, sortBy: 'amount' })); setSortMenuVisible(false); }} title="Amount" />
               <Menu.Item onPress={() => { setSort(s => ({ ...s, sortBy: 'category' })); setSortMenuVisible(false); }} title="Category" />
             </Menu>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
               <Text style={{ fontWeight: 'bold', color: colors.onSurfaceVariant, marginRight: 8 }}>Order</Text>
               <Button
                 mode={sort.sortOrder === 'asc' ? 'contained' : 'outlined'}
@@ -456,29 +526,14 @@ export default function ExpensesScreen() {
               </Button>
             </View>
             {/* Actions at the bottom of the sheet */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 18 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 }}>
               <Button onPress={() => { setFilters({ searchTerm: '', currency: 'all', startDate: '', endDate: '', category: 'all', minAmount: '', maxAmount: '', groupId: 'all' }); setSort({ sortBy: 'date', sortOrder: 'desc' }); }}>Clear</Button>
               <Button onPress={() => setFilterSheetOpen(false)}>Cancel</Button>
               <Button mode="contained" onPress={() => setFilterSheetOpen(false)} style={{ borderRadius: 12, minWidth: 90 }}>Apply</Button>
             </View>
           </ScrollView>
         </BottomSheet>
-        <BottomSheet
-          ref={testSheetRef}
-          index={0}
-          snapPoints={testSnapPoints}
-          enablePanDownToClose
-          onClose={() => {}}
-          backdropComponent={props => <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />}
-          backgroundStyle={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}
-          handleIndicatorStyle={{ backgroundColor: colors.outlineVariant || '#ccc', width: 44, height: 5, borderRadius: 3, marginTop: 8 }}
-          style={{ zIndex: 200 }}
-          onChange={index => console.log('[Test] Minimal BottomSheet index changed:', index)}
-        >
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Text>Test BottomSheet - Should Always Be Visible</Text>
-          </View>
-        </BottomSheet>
+        )}
         <Portal>
           <Dialog visible={deleteDialog.open} onDismiss={() => setDeleteDialog({ open: false })}>
             <Dialog.Title>Delete Expense?</Dialog.Title>
@@ -492,45 +547,97 @@ export default function ExpensesScreen() {
           </Dialog>
         </Portal>
       </ScrollView>
+
+      {/* FAB is now outside the ScrollView and will float */}
+      <FAB
+        icon="plus"
+        style={[
+          styles.fab,
+          { bottom: 4 + insets.bottom, backgroundColor: colors.primary }
+        ]}
+        color={colors.onPrimary}
+        onPress={() => setAddSheetOpen(true)}
+        visible
+      />
+
+      {/* Add Expense Bottom Sheet */}
+      <AddExpensesSheet
+        visible={addSheetOpen}
+        onClose={() => {
+          setAddSheetOpen(false);
+          fetchData();
+        }}
+      />
+
+      {/* Edit Expense Modal */}
+      <ExpensesEditModal
+        visible={editSheetOpen}
+        expense={editExpense}
+        onClose={() => {
+          setEditSheetOpen(false);
+          setEditExpense(null);
+        }}
+        onSave={handleEditSave}
+        loading={editLoading}
+      />
+
     </Surface>
   );
 }
 
 const styles = StyleSheet.create({
   headerContainer: {
-    paddingTop: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 4,
+    paddingTop: 20,
+    paddingHorizontal: 24,
+    paddingBottom: 16,
     backgroundColor: 'transparent',
   },
   headerTitle: {
     fontWeight: 'bold',
-    color: '#222',
-    marginBottom: 2,
+    marginBottom: 4,
     textAlign: 'left',
+    fontSize: 32,
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
-    color: '#888',
-    fontSize: 15,
-    marginBottom: 8,
+    fontSize: 16,
+    marginBottom: 16,
     textAlign: 'left',
   },
   card: {
-    borderRadius: 18,
-    marginBottom: 18,
-    backgroundColor: '#fff',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    // These styles are now applied directly in the component, but keeping for reference if needed elsewhere
+    // borderRadius: 16,
+    // marginBottom: 16,
+    // elevation: 4,
+    // shadowColor: '#000',
+    // shadowOpacity: 0.08,
+    // shadowRadius: 8,
+    // borderWidth: 1,
+    // padding: 16,
+  },
+  expenseHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  expenseTitle: {
+    fontWeight: 'bold',
+    fontSize: 20,
+    marginBottom: 2,
+    letterSpacing: -0.2,
+  },
+  expenseCategory: {
+    fontSize: 15,
+    marginBottom: 2,
+    fontWeight: '500',
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    marginTop: 4,
   },
   rowItem: {
     flexDirection: 'row',
@@ -538,12 +645,11 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontWeight: 'bold',
-    fontSize: 18,
-    color: '#222',
+    fontSize: 22,
   },
   date: {
-    color: '#888',
     fontSize: 15,
+    fontWeight: '500',
   },
   chip: {
     marginRight: 8,
@@ -551,39 +657,49 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     fontWeight: 'bold',
     fontSize: 13,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 4,
-    marginBottom: 4,
+    marginTop: 6,
+    marginBottom: 6,
   },
   tagChip: {
-    marginRight: 6,
+    marginRight: 8,
     marginBottom: 4,
-    backgroundColor: '#f3f4f6',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 13,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   notesRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
   notes: {
-    color: '#666',
-    fontSize: 14,
+    fontSize: 15,
     marginTop: 0,
+    fontWeight: '500',
   },
   fab: {
     position: 'absolute',
-    right: 16,
+    right: 20,
     zIndex: 10,
-    backgroundColor: '#2563eb',
-    elevation: 6,
+    backgroundColor: undefined, // Use theme color in component
+    elevation: 8,
     shadowColor: '#000',
     shadowOpacity: 0.18,
-    shadowRadius: 12,
+    shadowRadius: 16,
+    borderRadius: 32,
+    width: 64,
+    height: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingContainer: {
     flex: 1,
@@ -598,9 +714,9 @@ const styles = StyleSheet.create({
     paddingTop: 40,
   },
   emptyText: {
-    color: '#888',
-    fontSize: 16,
-    marginBottom: 16,
+    fontSize: 17,
+    marginBottom: 18,
     textAlign: 'center',
+    fontWeight: '500',
   },
-}); 
+});

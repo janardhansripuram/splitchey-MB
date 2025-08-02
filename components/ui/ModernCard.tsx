@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, ViewStyle } from 'react-native';
+import { useTheme } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { DesignSystem } from '../../constants/DesignSystem';
 
@@ -20,6 +21,7 @@ export const ModernCard: React.FC<ModernCardProps> = ({
   onPress,
   animated = true,
 }) => {
+  const { colors, dark } = useTheme();
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -44,19 +46,20 @@ export const ModernCard: React.FC<ModernCardProps> = ({
       padding: DesignSystem.spacing[padding],
     };
 
+    // Use theme colors for backgrounds and borders
     const variants = {
       default: {
-        backgroundColor: '#ffffff',
+        backgroundColor: dark ? colors.elevation.level2 : colors.surface,
         ...DesignSystem.shadows.base,
       },
       elevated: {
-        backgroundColor: '#ffffff',
+        backgroundColor: dark ? colors.elevation.level3 : colors.surface,
         ...DesignSystem.shadows.lg,
       },
       outlined: {
-        backgroundColor: '#ffffff',
+        backgroundColor: dark ? colors.elevation.level1 : colors.surface,
         borderWidth: 1,
-        borderColor: DesignSystem.colors.neutral[200],
+        borderColor: dark ? colors.outline : DesignSystem.colors.neutral[200],
         shadowOpacity: 0,
         elevation: 0,
       },

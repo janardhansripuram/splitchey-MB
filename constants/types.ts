@@ -151,9 +151,10 @@ export interface Friend {
 
 export interface GroupMemberDetail {
   uid: string;
-  email: string;
+  email: string | null; // Changed to allow null
   displayName?: string;
   role: 'creator' | 'admin' | 'member';
+  profilePictureUrl?: string | null; // Added profilePictureUrl
 }
 
 export interface Group {
@@ -208,6 +209,20 @@ export interface SplitExpense {
   updatedAt?: string;
   notes?: string;
 }
+
+export type CreateSplitExpenseData = {
+  originalExpenseId: string;
+  originalExpenseDescription: string;
+  currency: CurrencyCode;
+  splitMethod: SplitMethod;
+  totalAmount: number;
+  paidBy: string;
+  participants: SplitParticipant[];
+  groupId?: string | null;
+  groupName?: string | null;
+  notes?: string;
+  actorProfile?: UserProfile;
+};
 
 export interface Reminder {
   id?: string;
@@ -269,8 +284,8 @@ export interface GroupActivityLogEntry {
   actionType: ActivityActionType;
   details: string;
   timestamp: string; // ISO string
-  relatedMemberId?: string;
-  relatedMemberName?: string;
+  relatedMemberId?: string | null;
+  relatedMemberName?: string | null;
   relatedExpenseId?: string;
   relatedExpenseName?: string;
   previousValue?: string;
@@ -685,7 +700,7 @@ export interface Achievement {
     id: string;
     name: string;
     description: string;
-    icon: LucideIcon;
+    icon: string; // Changed from LucideIcon to string
     points: number;
 }
 

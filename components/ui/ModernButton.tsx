@@ -5,6 +5,7 @@ import { DesignSystem } from '../../constants/DesignSystem';
 
 interface ModernButtonProps {
   title: string;
+  label?: string; // Optional label prop
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
@@ -21,6 +22,7 @@ const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpaci
 
 export const ModernButton: React.FC<ModernButtonProps> = ({
   title,
+  label, // Optional label prop
   onPress,
   variant = 'primary',
   size = 'md',
@@ -120,7 +122,7 @@ export const ModernButton: React.FC<ModernButtonProps> = ({
 
   const getTextStyle = (): TextStyle => {
     const baseTextStyle: TextStyle = {
-      fontWeight: DesignSystem.typography.fontWeights.semibold,
+      fontWeight: 'semibold',
       textAlign: 'center',
     };
 
@@ -167,7 +169,7 @@ export const ModernButton: React.FC<ModernButtonProps> = ({
               {icon}
             </Animated.View>
           )}
-          <Text style={getTextStyle()}>{title}</Text>
+          <Text style={getTextStyle()}>{title || label}</Text>
           {icon && iconPosition === 'right' && (
             <Animated.View style={{ marginLeft: DesignSystem.spacing[2] }}>
               {icon}

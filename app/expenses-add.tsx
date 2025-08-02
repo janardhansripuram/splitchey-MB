@@ -1,310 +1,133 @@
+import { ModernInput } from '@/components/ui/ModernInput';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { manipulateAsync } from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { DollarSign, Repeat, Split, Users } from 'lucide-react-native';
+import { format } from 'date-fns';
 import React, { useEffect, useState } from 'react';
-import { Alert, Dimensions, Image, ScrollView as RNScrollView, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, Button, Card, Divider, HelperText, Snackbar, Surface, Switch, Text, TextInput, useTheme } from 'react-native-paper';
-import RNPickerSelect from 'react-native-picker-select';
+import { Image, Keyboard, ScrollView, TouchableOpacity, View, Platform } from 'react-native';
+import { ActivityIndicator, Divider, Modal, Portal, Snackbar, Switch, Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DesignSystem } from '../constants/DesignSystem';
+import { ModernButton } from '../components/ui/ModernButton';
+import { CategorySelectionModal } from '../components/CategorySelectionModal';
+import { EnhancedDatePicker } from '../components/ui/EnhancedDatePicker';
 import { SUPPORTED_CURRENCIES } from '../constants/types';
+import { getCategoryIcon, getCategoryLabel } from '../constants/categories';
 import { addExpense, createSplitExpense, getFriends, getGroupsForUser } from '../firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 const recurrenceOptions = [
-  { label: 'None', value: 'none', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Daily', value: 'daily', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Weekly', value: 'weekly', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Monthly', value: 'monthly', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Yearly', value: 'yearly', icon: <Repeat size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'None', value: 'none' },
+  { label: 'Daily', value: 'daily' },
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Yearly', value: 'yearly' },
 ];
 
 const splitMethods = [
-  { label: 'Equally', value: 'equally', icon: <Split size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'By Amount', value: 'byAmount', icon: <DollarSign size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'By Percentage', value: 'byPercentage', icon: <Split size={16} color={DesignSystem.colors.neutral[500]} /> },
+  { label: 'Equally', value: 'equally' },
+  { label: 'By Amount', value: 'byAmount' },
+  { label: 'By Percentage', value: 'byPercentage' },
 ];
 
-const categories = [
-  { label: 'Food', value: 'Food', icon: <MaterialCommunityIcons name="food" size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Transport', value: 'Transport', icon: <MaterialCommunityIcons name="car" size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Shopping', value: 'Shopping', icon: <MaterialCommunityIcons name="shopping" size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Groceries', value: 'Groceries', icon: <MaterialCommunityIcons name="cart" size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Bills', value: 'Bills', icon: <MaterialCommunityIcons name="receipt" size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Entertainment', value: 'Entertainment', icon: <MaterialCommunityIcons name="movie" size={16} color={DesignSystem.colors.neutral[500]} /> },
-  { label: 'Other', value: 'Other', icon: <MaterialCommunityIcons name="dots-horizontal" size={16} color={DesignSystem.colors.neutral[500]} /> },
-];
+export default function AddExpensesSheet({ visible, onClose, groupId: initialGroupId }: { visible: boolean; onClose: () => void; groupId?: string }) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { authUser, userProfile } = useAuth();
 
-// Utility to remove undefined fields
-function removeUndefined(obj: any): any {
-  if (Array.isArray(obj)) {
-    return obj.map(removeUndefined);
-  } else if (obj && typeof obj === 'object') {
-    return Object.fromEntries(
-      Object.entries(obj)
-        .filter(([_, v]) => v !== undefined)
-        .map(([k, v]) => [k, removeUndefined(v)])
-    );
-  }
-  return obj;
-}
-
-const pickerSelectStyles = {
-  inputIOS: {
-    fontSize: 18,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    color: DesignSystem.colors.neutral[900],
-    paddingRight: 30, // to ensure the text is never behind the icon
-  },
-  inputAndroid: {
-    fontSize: 18,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 16,
-    color: DesignSystem.colors.neutral[900],
-    paddingRight: 30, // to ensure the text is never behind the icon
-  },
-  placeholder: {
-    color: DesignSystem.colors.neutral[400],
-  },
-};
-
-export default function AddExpensesScreen() {
-  const { authUser, userProfile, loading: authLoading } = useAuth();
+  // Form state
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Food');
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [currency, setCurrency] = useState('USD');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [groupId, setGroupId] = useState('');
-  const [groups, setGroups] = useState<any[]>([]);
+  const [currencyModal, setCurrencyModal] = useState(false);
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [notes, setNotes] = useState('');
   const [tags, setTags] = useState('');
   const [recurrence, setRecurrence] = useState('none');
+  const [recurrenceModal, setRecurrenceModal] = useState(false);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showRecurrenceEndDatePicker, setShowRecurrenceEndDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
   const [splitMethod, setSplitMethod] = useState<'equally' | 'byAmount' | 'byPercentage'>('equally');
+  const [splitMethodModal, setSplitMethodModal] = useState(false);
   const [friends, setFriends] = useState<any[]>([]);
-  const [participants, setParticipants] = useState<any[]>([]); // Array of {uid, displayName, selected, amount, percentage}
+  const [groups, setGroups] = useState<any[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<string | undefined>(initialGroupId);
+  const [groupModal, setGroupModal] = useState(false);
+  const [participants, setParticipants] = useState<any[]>([]);
   const [paidBy, setPaidBy] = useState('');
-  const [splitError, setSplitError] = useState('');
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const { colors, dark } = useTheme();
-  const scrollViewRef = React.useRef<RNScrollView>(null);
-  const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
-  const [receiptImage, setReceiptImage] = useState<string | null>(null);
-  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+  const [paidByModal, setPaidByModal] = useState(false);
+  const [ocrImage, setOcrImage] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrError, setOcrError] = useState('');
+  const [splitError, setSplitError] = useState('');
+  const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
 
-  // 1. Add state for field errors
+  // Error states
   const [amountError, setAmountError] = useState('');
   const [descriptionError, setDescriptionError] = useState('');
   const [categoryError, setCategoryError] = useState('');
   const [currencyError, setCurrencyError] = useState('');
   const [dateError, setDateError] = useState('');
   const [formError, setFormError] = useState('');
-  const insets = useSafeAreaInsets();
 
+  // Fetch groups and friends
   useEffect(() => {
-    const fetchGroupsAndFriends = async () => {
-      if (!authUser) return;
-      const userGroups = await getGroupsForUser(authUser.uid);
-      setGroups(userGroups);
-      const userFriends = await getFriends(authUser.uid);
-      setFriends(userFriends);
-    };
-    fetchGroupsAndFriends();
+    if (!authUser) return;
+    getGroupsForUser(authUser.uid).then(setGroups);
+    getFriends(authUser.uid).then(setFriends);
   }, [authUser]);
 
+  // Split participants
   useEffect(() => {
-    // Reset participants when group or split toggled
     if (showSplit) {
-      let baseList = [];
-      if (groupId) {
-        const group = groups.find((g: any) => g.id === groupId);
-        baseList = group ? group.memberDetails : [];
-      } else {
-        baseList = [{ uid: authUser?.uid, displayName: userProfile?.displayName || 'You' }, ...friends];
-      }
+      let baseList = [{ uid: authUser?.uid, displayName: userProfile?.displayName || 'You' }, ...friends];
       setParticipants(baseList.map((p: any) => ({ ...p, selected: true, amount: '', percentage: '' })));
       setPaidBy(authUser?.uid || '');
     } else {
       setParticipants([]);
       setPaidBy(authUser?.uid || '');
     }
-  }, [showSplit, groupId, groups, friends, authUser, userProfile]);
+  }, [showSplit, friends, authUser, userProfile]);
 
-  useEffect(() => {
-    if (params.groupId && typeof params.groupId === 'string') {
-      setGroupId(params.groupId);
-    }
-  }, [params.groupId]);
-
-  const handleParticipantChange = (uid: string, field: 'amount' | 'percentage', value: string) => {
-    setParticipants((prev: any[]) => prev.map((p: any) => p.uid === uid ? { ...p, [field]: value } : p));
-  };
-
-  const handleParticipantToggle = (uid: string) => {
-    setParticipants((prev: any[]) => prev.map((p: any) => p.uid === uid ? { ...p, selected: !p.selected } : p));
-  };
-
-  const validateSplit = () => {
-    if (!showSplit) return true;
-    const selected = participants.filter((p: any) => p.selected);
-    if (selected.length === 0) {
-      setSplitError('Select at least one participant.');
-      return false;
-    }
-    if (splitMethod === 'byAmount') {
-      const total = selected.reduce((sum: number, p: any) => sum + parseFloat(p.amount || '0'), 0);
-      if (Math.abs(total - parseFloat(amount || '0')) > 0.01) {
-        setSplitError('Sum of amounts must equal total.');
-        return false;
-      }
-    }
-    if (splitMethod === 'byPercentage') {
-      const total = selected.reduce((sum: number, p: any) => sum + parseFloat(p.percentage || '0'), 0);
-      if (Math.abs(total - 100) > 0.01) {
-        setSplitError('Sum of percentages must be 100%.');
-        return false;
-      }
-    }
-    setSplitError('');
-    return true;
-  };
-
-  // OCR: Pick or capture receipt image
-  const handlePickReceipt = async () => {
-    setOcrError('');
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.8,
-      base64: true,
-    });
-    if (!result.canceled && result.assets && result.assets[0].uri) {
-      setReceiptImage(result.assets[0].uri);
-      // Resize for faster upload
-      const manipulated = await manipulateAsync(
-        result.assets[0].uri,
-        [{ resize: { width: 1024 } }],
-        { base64: true }
-      );
-      const base64 = manipulated.base64;
-      await handleOcrExtract(base64);
-    }
-  };
-
-  // OCR: Call backend to extract expense fields
-  const handleOcrExtract = async (imageBase64: string) => {
-    setOcrLoading(true);
-    setOcrError('');
-    try {
-      const functions = getFunctions();
-      const extractReceiptText = httpsCallable(functions, 'extractReceiptText');
-      const res = await extractReceiptText({ imageBase64 });
-      const data = res.data;
-      // Pre-fill fields if present
-      if (data.extracted?.amount) setAmount(data.extracted.amount.toString());
-      if (data.extracted?.date) setDate(data.extracted.date);
-      if (data.extracted?.merchant) setNotes((prev) => prev ? prev + `\nMerchant: ${data.extracted.merchant}` : `Merchant: ${data.extracted.merchant}`);
-      // Optionally, show fullText or other fields
-    } catch (e: any) {
-      setOcrError(e.message || 'Failed to extract receipt data.');
-    }
-    setOcrLoading(false);
-  };
-
-  // 2. Update handleSubmit to validate each field and set error states
-  const handleSubmit = async () => {
-    setFormError('');
+  // Validation
+  const validateForm = () => {
     let hasError = false;
-    let localAmountError = '';
-    let localDescriptionError = '';
-    let localCategoryError = '';
-    let localCurrencyError = '';
-    let localDateError = '';
-    const missingFields: string[] = [];
-    let firstErrorField = null;
+    setAmountError('');
+    setDescriptionError('');
+    setCategoryError('');
+    setCurrencyError('');
+    setDateError('');
+    setFormError('');
 
     if (!amount || isNaN(Number(amount))) {
-      localAmountError = 'Amount is required and must be a valid number.';
+      setAmountError('Amount is required and must be a valid number.');
       hasError = true;
-      missingFields.push('Amount');
-      firstErrorField = firstErrorField || 'amount';
     }
     if (!description) {
-      localDescriptionError = 'Description is required.';
+      setDescriptionError('Description is required.');
       hasError = true;
-      missingFields.push('Description');
-      firstErrorField = firstErrorField || 'description';
     }
     if (!category) {
-      localCategoryError = 'Category is required.';
+      setCategoryError('Category is required.');
       hasError = true;
-      missingFields.push('Category');
-      firstErrorField = firstErrorField || 'category';
     }
     if (!currency) {
-      localCurrencyError = 'Currency is required.';
+      setCurrencyError('Currency is required.');
       hasError = true;
-      missingFields.push('Currency');
-      firstErrorField = firstErrorField || 'currency';
     }
     if (!date) {
-      localDateError = 'Date is required.';
+      setDateError('Date is required.');
       hasError = true;
-      missingFields.push('Date');
-      firstErrorField = firstErrorField || 'date';
     }
-    if (showSplit && !validateSplit()) {
-      Alert.alert('Error', splitError || 'Invalid split.');
-      hasError = true;
-      firstErrorField = firstErrorField || 'split';
-    }
+    return !hasError;
+  };
 
-    setAmountError(localAmountError);
-    setDescriptionError(localDescriptionError);
-    setCategoryError(localCategoryError);
-    setCurrencyError(localCurrencyError);
-    setDateError(localDateError);
-
-    if (hasError) {
-      setFormError('Please fill all required fields: ' + missingFields.join(', '));
-      setSnackbar({ visible: true, message: 'Please fill all required fields: ' + missingFields.join(', ') });
-      // Scroll to the first error field
-      if (scrollViewRef.current) {
-        let y = 0;
-        switch (firstErrorField) {
-          case 'amount': y = 0; break;
-          case 'currency': y = 0; break;
-          case 'description': y = 80; break;
-          case 'category': y = 160; break;
-          case 'date': y = 240; break;
-          case 'split': y = 600; break;
-          default: y = 0;
-        }
-        scrollViewRef.current.scrollTo({ y, animated: true });
-      }
-      console.log('[AddExpense] Validation failed', {
-        localAmountError, localDescriptionError, localCategoryError, localCurrencyError, localDateError, splitError
-      });
+  // Handle submit
+  const handleSubmit = async () => {
+    if (!validateForm()) {
+      setFormError('Please fill all required fields.');
+      setSnackbar({ visible: true, message: 'Please fill all required fields.' });
       return;
     }
-
     setLoading(true);
     try {
       const expenseData = {
@@ -318,375 +141,761 @@ export default function AddExpensesScreen() {
         isRecurring: recurrence !== 'none',
         recurrence,
         recurrenceEndDate: recurrence !== 'none' && recurrenceEndDate ? recurrenceEndDate : undefined,
-        groupId: groupId || undefined,
-        groupName: groupId ? (groups.find((g: any) => g.id === groupId)?.name || undefined) : undefined,
-        receiptUrl: receiptUrl || undefined,
+        groupId: selectedGroup === 'personal' ? undefined : selectedGroup,
+        groupName: selectedGroup === 'personal' ? undefined : groups.find(g => g.id === selectedGroup)?.name,
       };
-      console.log('[AddExpense] Calling addExpense', expenseData);
-      const expenseId = await addExpense(authUser.uid, expenseData, userProfile, receiptUrl ? 'ocr' : 'manual');
+      let expenseId: string;
       if (showSplit) {
-        const selected = participants.filter((p: any) => p.selected);
-        const splitPayload = {
-          originalExpenseId: expenseId,
-          originalExpenseDescription: description,
-          currency,
-          splitMethod,
-          totalAmount: parseFloat(amount),
-          paidBy,
-          participants: selected.map((p: any) => ({
+        // Validate split participants
+        const selectedParticipants = participants.filter(p => p.selected);
+        if (selectedParticipants.length < 2) {
+          setSplitError('Please select at least two participants for a split expense.');
+          setSnackbar({ visible: true, message: 'Please select at least two participants for a split expense.' });
+          setLoading(false);
+          return;
+        }
+
+        let totalAmountForSplit = parseFloat(amount);
+        if (isNaN(totalAmountForSplit) || totalAmountForSplit <= 0) {
+          setSplitError('Please enter a valid amount for the split expense.');
+          setSnackbar({ visible: true, message: 'Please enter a valid amount for the split expense.' });
+          setLoading(false);
+          return;
+        }
+
+        const splitParticipantsData = selectedParticipants.map(p => {
+          let amountOwed = 0;
+          let percentage = 0;
+
+          if (splitMethod === 'byAmount') {
+            amountOwed = parseFloat(p.amount);
+            if (isNaN(amountOwed) || amountOwed < 0) {
+              throw new Error(`Invalid amount for participant ${p.displayName || p.email}`);
+            }
+          } else if (splitMethod === 'byPercentage') {
+            percentage = parseFloat(p.percentage);
+            if (isNaN(percentage) || percentage < 0) {
+              throw new Error(`Invalid percentage for participant ${p.displayName || p.email}`);
+            }
+            amountOwed = (totalAmountForSplit * percentage) / 100; // Will be re-calculated in backend
+          } else { // Equally
+            amountOwed = totalAmountForSplit / selectedParticipants.length; // Will be re-calculated in backend
+          }
+
+          return {
             userId: p.uid,
-            displayName: p.displayName,
-            email: p.email,
-            amountOwed: splitMethod === 'equally' ? parseFloat(amount) / selected.length : splitMethod === 'byAmount' ? parseFloat(p.amount || '0') : splitMethod === 'byPercentage' ? parseFloat(amount) * (parseFloat(p.percentage || '0') / 100) : 0,
-            percentage: splitMethod === 'byPercentage' ? parseFloat(p.percentage || '0') : undefined,
-            settlementStatus: 'unsettled' as const,
-          })),
-          groupId: groupId || undefined,
-          groupName: groupId ? (groups.find((g: any) => g.id === groupId)?.name || undefined) : undefined,
-          notes,
+            displayName: p.displayName || p.email || 'Unknown',
+            email: p.email || '',
+            amountOwed: parseFloat(amountOwed.toFixed(2)), // Ensure 2 decimal places
+            percentage: parseFloat(percentage.toFixed(2)),
+            settlementStatus: 'unsettled', // Default status
+          };
+        });
+
+        const splitExpenseData = {
+          originalExpenseId: 'temp-id-' + Date.now(), // Will be replaced by actual expense ID
+          originalExpenseDescription: description,
+          currency: currency,
+          splitMethod: splitMethod,
+          totalAmount: totalAmountForSplit,
+          paidBy: paidBy,
+          participants: splitParticipantsData,
+          groupId: selectedGroup === 'personal' ? null : selectedGroup,
+          groupName: selectedGroup === 'personal' ? null : groups.find(g => g.id === selectedGroup)?.name,
+          notes: notes,
           actorProfile: userProfile,
-          involvedUserIds: selected.map((p: any) => p.uid),
         };
-        console.log('[AddExpense] Calling createSplitExpense', splitPayload);
-        const cleanSplitPayload = removeUndefined(splitPayload);
-        await createSplitExpense(cleanSplitPayload);
+
+        // First add the main expense
+        const mainExpenseId = await addExpense(authUser.uid, expenseData, userProfile);
+        
+        // Then create the split expense, linking it to the main expense
+        splitExpenseData.originalExpenseId = mainExpenseId;
+        expenseId = await createSplitExpense(splitExpenseData);
+
+        setSnackbar({ visible: true, message: 'Split expense added!' });
+
+      } else {
+        expenseId = await addExpense(authUser.uid, expenseData, userProfile);
+        setSnackbar({ visible: true, message: 'Expense added!' });
       }
-      console.log('[AddExpense] Success');
-      Alert.alert('Success', 'Expense added!');
-      router.back();
-    } catch (e) {
-      console.error('[AddExpense] Error:', e);
-      Alert.alert('Error', 'Failed to add expense.');
+      onClose();
+    } catch (e: any) {
+      console.error("Error adding expense:", e);
+      setSnackbar({ visible: true, message: `Failed to add expense: ${e.message || 'Unknown error'}` });
     }
     setLoading(false);
   };
+const handleOcrScan = async () => {
 
-  // Handler for disabled Add Expense button
-  const handleDisabledAddExpense = () => {
-    let message = 'Please fill all required fields correctly.';
-    if (amountError) message = amountError;
-    else if (descriptionError) message = descriptionError;
-    else if (categoryError) message = categoryError;
-    else if (currencyError) message = currencyError;
-    else if (dateError) message = dateError;
-    else if (showSplit && participants.filter((p: any) => p.selected).length === 0) message = 'Select at least one participant.';
-    else if (showSplit && splitError) message = splitError;
-    setSnackbar({ visible: true, message });
-  };
+}
+  // OCR Scanner Handler
+  // const handleOcrScan = async () => {
+  //   setOcrLoading(true);
+  //   try {
+  //     const result = await ImagePicker.launchImageLibraryAsync({
+  //       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  //       allowsEditing: false,
+  //       quality: 1,
+  //     });
+  //     if (!result.canceled && result.assets && result.assets.length > 0) {
+  //       const uri = result.assets[0].uri;
+  //       setOcrImage(uri);
 
-  if (authLoading || !authUser || !userProfile) {
-    return (
-      <Surface style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </Surface>
-    );
-  }
+  //       // Run OCR
+  //       const ocrResult = await MLKitOcr.scanImage(uri);
 
-  const currencyOptions = SUPPORTED_CURRENCIES.map(c => ({
-    label: `${c.code} - ${c.name}`,
-    value: c.code,
-    icon: <DollarSign size={16} color={DesignSystem.colors.neutral[500]} />,
-  }));
+  //       // Combine all recognized text into a single string
+  //       const allText = ocrResult.map(block => block.text).join('\n');
 
-  const groupOptions = [
-    { label: 'Personal', value: '', icon: <Users size={16} color={DesignSystem.colors.neutral[500]} /> },
-    ...groups.map(g => ({ 
-      label: g.name, 
-      value: g.id,
-      icon: <Users size={16} color={DesignSystem.colors.neutral[500]} />
-    }))
-  ];
+  //       // --- Advanced Parsing ---
+
+  //       // 1. Amount: Find all numbers with 2 decimals, pick the largest as total
+  //       const amounts = allText.match(/(\d{1,5}[.,]\d{2})/g);
+  //       if (amounts && amounts.length > 0) {
+  //         const maxAmount = amounts
+  //           .map((a: string) => parseFloat(a.replace(',', '.')))
+  //           .reduce((a: number, b: number) => (a > b ? a : b), 0);
+  //         setAmount(maxAmount.toFixed(2));
+  //       }
+
+  //       // 2. Date: Look for common date patterns (dd/mm/yyyy, yyyy-mm-dd, mm/dd/yyyy)
+  //       const dateMatch = allText.match(/(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})|(\d{4}[\/\-\.]\d{2}[\/\-\.]\d{2})/);
+  //       if (dateMatch && dateMatch[0]) {
+  //         // Normalize to yyyy-MM-dd
+  //         let d = dateMatch[0].replace(/\./g, '-').replace(/\//g, '-');
+  //         let parts = d.split('-');
+  //         let normalized = '';
+  //         if (parts[0].length === 4) {
+  //           // yyyy-MM-dd
+  //           normalized = d;
+  //         } else {
+  //           // dd-MM-yyyy or MM-dd-yyyy
+  //           normalized = `${parts[2]}-${parts[1]}-${parts[0]}`;
+  //         }
+  //         setDate(normalized);
+  //       }
+
+  //       // 3. Merchant/Description: Use first line with letters, not all caps, not "TOTAL"
+  //       const lines = allText.split('\n').map((l: string) => l.trim());
+  //       const likelyDesc = lines.find((l: string) =>
+  //         /[a-zA-Z]/.test(l) &&
+  //         l.length > 3 &&
+  //         !/^TOTAL/i.test(l) &&
+  //         l !== l.toUpperCase()
+  //       );
+  //       if (likelyDesc) setDescription(likelyDesc);
+
+  //       // 4. Category: Try to guess from keywords
+  //       const lowerText = allText.toLowerCase();
+  //       if (lowerText.includes('uber') || lowerText.includes('taxi') || lowerText.includes('cab')) setCategory('Transport');
+  //       else if (lowerText.includes('grocery') || lowerText.includes('supermarket')) setCategory('Groceries');
+  //       else if (lowerText.includes('restaurant') || lowerText.includes('food') || lowerText.includes('cafe')) setCategory('Food');
+  //       else if (lowerText.includes('shopping') || lowerText.includes('mall')) setCategory('Shopping');
+  //       else if (lowerText.includes('bill') || lowerText.includes('electricity') || lowerText.includes('water')) setCategory('Bills');
+  //       else if (lowerText.includes('movie') || lowerText.includes('cinema')) setCategory('Entertainment');
+
+  //       // 5. Tags: Extract all words after '#' or '@'
+  //       const tagMatches = allText.match(/[#@][\w\-]+/g);
+  //       if (tagMatches && tagMatches.length > 0) {
+  //         setTags(tagMatches.map((t: string) => t.replace(/^[@#]/, '')).join(', '));
+  //       }
+
+  //       // 6. Notes: Optionally, store all OCR text for reference
+  //       // setNotes(allText);
+  //     }
+  //   } catch (e) {
+  //     setSnackbar({ visible: true, message: 'Failed to scan receipt.' });
+  //   }
+  //   setOcrLoading(false);
+  // };
+
+  if (!visible) return null;
 
   return (
-    <Surface style={{ flex: 1, backgroundColor: colors.background }}>
-      <RNScrollView ref={scrollViewRef} contentContainerStyle={{ padding: 20, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
-        {formError ? <View style={{ backgroundColor: colors.errorContainer, padding: 12, borderRadius: 12, marginBottom: 16 }}><Text style={{ color: colors.error, fontWeight: 'bold', textAlign: 'center' }}>{formError}</Text></View> : null}
-        {/* OCR Receipt Section */}
-        <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
-          <Card.Content>
-            <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold', marginBottom: 8 }}>
-              Receipt OCR (Optional)
-            </Text>
-            <Button icon="camera" mode="outlined" onPress={handlePickReceipt} loading={ocrLoading} disabled={ocrLoading} style={{ marginBottom: 8 }}>
-              {receiptImage ? 'Change Receipt Image' : 'Upload or Capture Receipt'}
-            </Button>
-            {receiptImage && (
-              <View style={{ alignItems: 'center', marginBottom: 8 }}>
-                <Text style={{ marginBottom: 4 }}>Preview:</Text>
-                <View style={{ borderWidth: 1, borderColor: colors.outline, borderRadius: 12, overflow: 'hidden' }}>
-                  <Image source={{ uri: receiptImage }} style={{ width: 200, height: 200, resizeMode: 'contain' }} />
-                </View>
-                {ocrLoading && <ActivityIndicator style={{ marginTop: 8 }} />}
-              </View>
-            )}
-            {ocrError ? <Text style={{ color: colors.error }}>{ocrError}</Text> : null}
-            <Text style={{ fontSize: 12, color: colors.onSurfaceVariant, marginTop: 4 }}>
-              Use your phone camera or gallery to upload a receipt. We'll try to extract the details for you!
-            </Text>
-          </Card.Content>
-        </Card>
-        <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
-          <Card.Content>
-            <Text variant="titleLarge" style={{ color: colors.primary, fontWeight: 'bold', marginBottom: 16 }}>
-              Expense Details
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              {/* 3. Amount field: autoFocus, large font, full width, error state */}
-              <TextInput
-                label="Amount"
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-                mode="outlined"
-                left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="currency-usd" size={22} color={colors.primary} />} />}
-                style={{ flex: 1, borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, fontSize: 22, height: 56, paddingVertical: 12 }}
-                theme={{ roundness: 16 }}
-                autoFocus
-              />
-              {/* 4. Dropdowns: full width, large, clear placeholder, error state, wrap in View for spacing */}
-              <View style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, minHeight: 56, justifyContent: 'center', paddingHorizontal: 4 }}>
-                <RNPickerSelect
-                  value={currency}
-                  onValueChange={v => setCurrency(v || '')}
-                  items={SUPPORTED_CURRENCIES.map(c => ({ label: `${c.code} - ${c.name}`, value: c.code }))}
-                  placeholder={{ label: 'Select Currency', value: '' }}
-                  style={pickerSelectStyles}
-                  Icon={() => <MaterialCommunityIcons name="currency-usd" size={22} color={colors.primary} />}
-                />
-                {currencyError ? <HelperText type="error" visible={true}>{currencyError}</HelperText> : null}
-              </View>
-            </View>
-            <TextInput
-              label="Description"
-              value={description}
-              onChangeText={setDescription}
-              mode="outlined"
-              left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="text" size={22} color={colors.primary} />} />}
-              style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface }}
-              theme={{ roundness: 16 }}
-              error={!!descriptionError}
-            />
-            {descriptionError ? <HelperText type="error" visible={true}>{descriptionError}</HelperText> : null}
-            {/* 4. Dropdowns: full width, large, clear placeholder, error state, wrap in View for spacing */}
-            <View style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, minHeight: 56, justifyContent: 'center', paddingHorizontal: 4 }}>
-              <RNPickerSelect
-                value={category}
-                onValueChange={v => setCategory(v || '')}
-                items={categories}
-                placeholder={{ label: 'Select Category', value: '' }}
-                style={pickerSelectStyles}
-                Icon={() => <MaterialCommunityIcons name="text-box-outline" size={22} color={colors.primary} />}
-              />
-              {categoryError ? <HelperText type="error" visible={true}>{categoryError}</HelperText> : null}
-            </View>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              {/* 4. Dropdowns: full width, large, clear placeholder, error state, wrap in View for spacing */}
-              <View style={{ flex: 1, borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, minHeight: 56, justifyContent: 'center', paddingHorizontal: 4 }}>
-                <RNPickerSelect
-                  value={date}
-                  onValueChange={v => setDate(v || '')}
-                  items={[{ label: 'Select Date', value: '' }]}
-                  placeholder={{ label: 'Select Date', value: '' }}
-                  style={pickerSelectStyles}
-                  Icon={() => <MaterialCommunityIcons name="calendar" size={22} color={colors.primary} />}
-                />
-                {dateError ? <HelperText type="error" visible={true}>{dateError}</HelperText> : null}
-              </View>
-              <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                <TextInput
-                  label="Date"
-                  value={date}
-                  editable={false}
-                  mode="outlined"
-                  left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="calendar" size={22} color={colors.primary} />} />}
-                  style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface }}
-                  theme={{ roundness: 16 }}
-                  right={<TextInput.Icon icon="calendar" />}
-                />
-              </TouchableOpacity>
-            </View>
-            {showDatePicker && (
-              <DateTimePicker
-                value={date ? new Date(date) : new Date()}
-                mode="date"
-                display="default"
-                onChange={(_, selectedDate) => {
-                  setShowDatePicker(false);
-                  if (selectedDate) setDate(selectedDate.toISOString().slice(0, 10));
-                }}
-              />
-            )}
-            {/* 4. Dropdowns: full width, large, clear placeholder, error state, wrap in View for spacing */}
-            <View style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, minHeight: 56, justifyContent: 'center', paddingHorizontal: 4 }}>
-              <RNPickerSelect
-                value={groupId}
-                onValueChange={v => setGroupId(v || '')}
-                items={[{ label: 'Personal', value: '' }, ...groups.map((g: any) => ({ label: g.name, value: g.id }))]}
-                placeholder={{ label: 'Select Group', value: '' }}
-                style={pickerSelectStyles}
-                Icon={() => <MaterialCommunityIcons name="account-group" size={22} color={colors.primary} />}
-              />
-              {currencyError ? <HelperText type="error" visible={true}>{currencyError}</HelperText> : null}
-            </View>
-          </Card.Content>
-        </Card>
-        <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
-          <Card.Content>
-            <Text variant="titleLarge" style={{ color: colors.primary, fontWeight: 'bold', marginBottom: 16 }}>
-              Additional Details
-            </Text>
-            <TextInput
-              label="Notes"
-              value={notes}
-              onChangeText={setNotes}
-              mode="outlined"
-              left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="note-text-outline" size={22} color={colors.primary} />} />}
-              style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface }}
-              theme={{ roundness: 16 }}
-              multiline
-            />
-            <TextInput
-              label="Tags (comma separated)"
-              value={tags}
-              onChangeText={setTags}
-              mode="outlined"
-              left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="tag-outline" size={22} color={colors.primary} />} />}
-              style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface }}
-              theme={{ roundness: 16 }}
-            />
-            <View style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, minHeight: 56, justifyContent: 'center', paddingHorizontal: 4 }}>
-              <RNPickerSelect
-                value={recurrence}
-                onValueChange={v => setRecurrence(v || '')}
-                items={recurrenceOptions}
-                placeholder={{ label: 'Select Recurrence', value: '' }}
-                style={pickerSelectStyles}
-                Icon={() => <MaterialCommunityIcons name="repeat" size={22} color={colors.primary} />}
-              />
-              {recurrence !== 'none' && (
-                <TouchableOpacity onPress={() => setShowRecurrenceEndDatePicker(true)}>
-                  <TextInput
-                    label="Recurrence End Date"
-                    value={recurrenceEndDate}
-                    editable={false}
-                    mode="outlined"
-                    left={<TextInput.Icon icon={() => <MaterialCommunityIcons name="calendar" size={22} color={colors.primary} />} />}
-                    style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface }}
-                    theme={{ roundness: 16 }}
-                    right={<TextInput.Icon icon="calendar" />}
-                  />
-                </TouchableOpacity>
-              )}
-              {showRecurrenceEndDatePicker && (
-                <DateTimePicker
-                  value={recurrenceEndDate ? new Date(recurrenceEndDate) : new Date()}
-                  mode="date"
-                  display="default"
-                  onChange={(_, selectedDate) => {
-                    setShowRecurrenceEndDatePicker(false);
-                    if (selectedDate) setRecurrenceEndDate(selectedDate.toISOString().slice(0, 10));
-                  }}
-                />
-              )}
-            </View>
-          </Card.Content>
-        </Card>
-        <Card style={{ marginBottom: 20, borderRadius: 20, elevation: 2, backgroundColor: colors.elevation.level1 }}>
-          <Card.Content>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-              <Switch value={showSplit} onValueChange={setShowSplit} color={colors.primary} />
-              <Text style={{ marginLeft: 8, fontWeight: 'bold', fontSize: 16 }}>Split this Expense</Text>
-            </View>
-            {showSplit && (
-              <View style={{ marginBottom: 8 }}>
-                <View style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, minHeight: 56, justifyContent: 'center', paddingHorizontal: 4 }}>
-                  <RNPickerSelect
-                    value={splitMethod}
-                    onValueChange={v => setSplitMethod((v as 'equally' | 'byAmount' | 'byPercentage') || 'equally')}
-                    items={splitMethods}
-                    placeholder={{ label: 'Select Split Method', value: '' }}
-                    style={pickerSelectStyles}
-                    Icon={() => <MaterialCommunityIcons name="swap-horizontal" size={22} color={colors.primary} />}
-                  />
-                  {currencyError ? <HelperText type="error" visible={true}>{currencyError}</HelperText> : null}
-                </View>
-                <Divider style={{ marginVertical: 8 }} />
-                <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>Participants</Text>
-                {participants.map((p: any) => (
-                  <View key={p.uid} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, backgroundColor: p.selected ? colors.surface : 'transparent', borderRadius: 12, padding: 6 }}>
-                    <Switch value={p.selected} onValueChange={() => handleParticipantToggle(p.uid)} color={colors.primary} />
-                    <Text style={{ marginLeft: 8, flex: 1 }}>{p.displayName || p.email || 'Unknown'}</Text>
-                    {splitMethod === 'byAmount' && p.selected && (
-                      <TextInput
-                        label="Amount"
-                        value={p.amount}
-                        onChangeText={v => handleParticipantChange(p.uid, 'amount', v)}
-                        keyboardType="decimal-pad"
-                        mode="outlined"
-                        style={{ width: 80, marginLeft: 8, borderRadius: 12, backgroundColor: colors.surface }}
-                        theme={{ roundness: 12 }}
-                      />
-                    )}
-                    {splitMethod === 'byPercentage' && p.selected && (
-                      <TextInput
-                        label="%"
-                        value={p.percentage}
-                        onChangeText={v => handleParticipantChange(p.uid, 'percentage', v)}
-                        keyboardType="decimal-pad"
-                        mode="outlined"
-                        style={{ width: 60, marginLeft: 8, borderRadius: 12, backgroundColor: colors.surface }}
-                        theme={{ roundness: 12 }}
-                      />
-                    )}
-                    {splitMethod === 'equally' && p.selected && (
-                      <Text style={{ marginLeft: 8 }}>{amount && participants.filter((x: any) => x.selected).length ? (parseFloat(amount) / participants.filter((x: any) => x.selected).length).toFixed(2) : '0.00'}</Text>
-                    )}
-                  </View>
-                ))}
-                <Divider style={{ marginVertical: 8 }} />
-                <View style={{ borderRadius: 16, marginBottom: 12, backgroundColor: colors.surface, minHeight: 56, justifyContent: 'center', paddingHorizontal: 4 }}>
-                  <RNPickerSelect
-                    value={paidBy}
-                    onValueChange={v => setPaidBy(v || '')}
-                    items={participants.filter((p: any) => p.selected).map((p: any) => ({ label: p.displayName || p.email || 'Unknown', value: p.uid }))}
-                    placeholder={{ label: 'Select Paid By', value: '' }}
-                    style={pickerSelectStyles}
-                    Icon={() => <MaterialCommunityIcons name="account-check" size={22} color={colors.primary} />}
-                  />
-                  {currencyError ? <HelperText type="error" visible={true}>{currencyError}</HelperText> : null}
-                </View>
-                {splitError ? <HelperText type="error" visible={true}>{splitError}</HelperText> : null}
-              </View>
-            )}
-          </Card.Content>
-        </Card>
-      </RNScrollView>
-      {/* 7. Add Expense button: full width, large, always visible, disabled if any required field is missing */}
-      <Surface style={{ position: 'absolute', left: 0, right: 0, bottom: 16, backgroundColor: colors.elevation.level2, padding: 16, flexDirection: 'row', gap: 12, borderTopLeftRadius: 20, borderTopRightRadius: 20, elevation: 8 }}>
-        <Button
-          mode="contained"
-          onPress={!(loading || amountError || descriptionError || categoryError || currencyError || dateError || (showSplit && participants.filter((p: any) => p.selected).length === 0) || (showSplit && splitError !== '') || ocrLoading) ? handleSubmit : handleDisabledAddExpense}
-          loading={loading || ocrLoading}
-          style={{ flex: 1, borderRadius: 16, height: 48 }}
-          labelStyle={{ fontWeight: 'bold', fontSize: 18 }}
-          testID="add-expense-btn"
-          disabled={loading || ocrLoading}
-        >
-          Add Expense
-        </Button>
-        <Button mode="outlined" onPress={() => router.back()} style={{ flex: 1, borderRadius: 16, height: 48 }} labelStyle={{ fontWeight: 'bold', fontSize: 18 }}>
-          Cancel
-        </Button>
-      </Surface>
-      <Snackbar
-        visible={snackbar.visible}
-        onDismiss={() => setSnackbar({ visible: false, message: '' })}
-        duration={2500}
-        style={{ backgroundColor: colors.error }}
+    <Portal>
+      <Modal
+        visible={visible}
+        onDismiss={onClose}
+        contentContainerStyle={{
+          backgroundColor: colors.elevation.level2,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          paddingBottom: insets.bottom + 24,
+          paddingTop: 20,
+          minHeight: 580,
+          maxHeight: '90%',
+        }}
+        style={{
+          justifyContent: 'flex-end',
+          margin: 0,
+        }}
       >
-        {snackbar.message}
-      </Snackbar>
-      {loading && <ActivityIndicator style={{ position: 'absolute', top: '50%', left: '50%' }} />}
-    </Surface>
+        <View style={{ alignItems: 'center', marginBottom: 8 }}>
+          <View style={{
+            width: 44, height: 5, borderRadius: 3, backgroundColor: colors.outlineVariant || '#ccc', marginTop: 8, marginBottom: 8,
+          }} />
+        </View>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.primary, marginBottom: 16, textAlign: 'center' }}>
+            Add New Expense
+          </Text>
+          <Divider style={{ marginBottom: 20 }} />
+
+          {/* OCR Scanner */}
+          <TouchableOpacity
+            onPress={handleOcrScan}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: colors.primaryContainer,
+              borderRadius: 14,
+              padding: 10,
+              marginBottom: 12,
+              justifyContent: 'center',
+            }}
+            disabled={ocrLoading}
+          >
+            <MaterialCommunityIcons name="barcode-scan" size={22} color={colors.primary} />
+            <Text style={{ marginLeft: 8, color: colors.primary, fontWeight: 'bold', fontSize: 16 }}>
+              {ocrLoading ? 'Scanning...' : 'Scan Receipt (OCR)'}
+            </Text>
+          </TouchableOpacity>
+          {ocrImage && (
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, marginBottom: 4 }}>Scanned Image:</Text>
+              <Image source={{ uri: ocrImage }} style={{ width: 120, height: 80, borderRadius: 8 }} />
+            </View>
+          )}
+
+          {/* Amount */}
+          <ModernInput
+            label="Amount"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            leftIcon={<MaterialCommunityIcons name="currency-usd" size={22} color={colors.primary} />}
+            style={{ marginBottom: 12 }}
+            error={amountError}
+          />
+
+          {/* Currency Picker */}
+          <TouchableOpacity 
+            onPress={() => { setCurrencyModal(true); Keyboard.dismiss(); }} 
+            activeOpacity={0.7}
+            style={{ marginBottom: 12 }}
+          >
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 2,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+              paddingHorizontal: 16,
+              minHeight: 56,
+              borderColor: currencyError ? colors.error : colors.outline,
+            }}>
+              <MaterialCommunityIcons name="currency-usd" size={22} color={colors.primary} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.onSurfaceVariant, marginBottom: 2 }}>Currency</Text>
+                <Text style={{ fontSize: 16, color: colors.onSurface }}>{currency}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-down" size={22} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+          <Portal>
+            <Modal
+              visible={currencyModal}
+              onDismiss={() => setCurrencyModal(false)}
+              contentContainerStyle={{
+                margin: 20,
+                padding: 20,
+                backgroundColor: colors.surface,
+                borderRadius: 16,
+              }}
+            >
+              <Text style={{ fontWeight: 'bold', fontSize: 20, marginBottom: 16, color: colors.primary }}>Select Currency</Text>
+              {SUPPORTED_CURRENCIES.map(c => (
+                <TouchableOpacity
+                  key={c.code}
+                  style={{
+                    paddingVertical: 14,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    backgroundColor: c.code === currency ? colors.primaryContainer : 'transparent',
+                    marginBottom: 4,
+                  }}
+                  onPress={() => {
+                    setCurrency(c.code);
+                    setCurrencyModal(false);
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 17,
+                    color: c.code === currency ? colors.primary : colors.onSurface,
+                    fontWeight: c.code === currency ? 'bold' : 'normal'
+                  }}>
+                    {c.code} - {c.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </Modal>
+          </Portal>
+          {currencyError ? null : null}
+
+          {/* Description */}
+          <ModernInput
+            label="Description"
+            value={description}
+            onChangeText={setDescription}
+            leftIcon={<MaterialCommunityIcons name="text" size={22} color={colors.primary} />}
+            style={{ marginBottom: 12 }}
+            error={descriptionError}
+          />
+
+          {/* Category Picker */}
+          <TouchableOpacity 
+            onPress={() => { setShowCategoryModal(true); Keyboard.dismiss(); }} 
+            activeOpacity={0.7}
+            style={{ marginBottom: 12 }}
+          >
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 2,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+              paddingHorizontal: 16,
+              minHeight: 56,
+              borderColor: categoryError ? colors.error : colors.outline,
+            }}>
+              <MaterialCommunityIcons name={getCategoryIcon(category)} size={22} color={colors.primary} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.onSurfaceVariant, marginBottom: 2 }}>Category</Text>
+                <Text style={{ fontSize: 16, color: colors.onSurface }}>{getCategoryLabel(category)}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-down" size={22} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+          <Portal>
+            <CategorySelectionModal
+              visible={showCategoryModal}
+              onDismiss={() => setShowCategoryModal(false)}
+              onSelect={setCategory}
+              selectedValue={category}
+              type="expense"
+              title="Select Category"
+            />
+          </Portal>
+          {categoryError ? null : null}
+
+          {/* Enhanced Date Picker */}
+          <EnhancedDatePicker
+            value={date}
+            onValueChange={setDate}
+            label="Date"
+            placeholder="Select expense date"
+            error={dateError}
+            style={{ marginBottom: 12 }}
+          />
+
+          {/* Notes */}
+          <ModernInput
+            label="Notes (optional)"
+            value={notes}
+            onChangeText={setNotes}
+            leftIcon={<MaterialCommunityIcons name="note-text-outline" size={22} color={colors.primary} />}
+            style={{ marginBottom: 12 }}
+            multiline
+          />
+
+          {/* Tags */}
+          <ModernInput
+            label="Tags (comma separated)"
+            value={tags}
+            onChangeText={setTags}
+            leftIcon={<MaterialCommunityIcons name="tag-outline" size={22} color={colors.primary} />}
+            style={{ marginBottom: 12 }}
+          />
+
+          {/* Recurrence Picker */}
+          <TouchableOpacity 
+            onPress={() => { setRecurrenceModal(true); Keyboard.dismiss(); }} 
+            activeOpacity={0.7}
+            style={{ marginBottom: 12 }}
+          >
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 2,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+              paddingHorizontal: 16,
+              minHeight: 56,
+              borderColor: colors.outline,
+            }}>
+              <MaterialCommunityIcons name="repeat" size={22} color={colors.primary} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.onSurfaceVariant, marginBottom: 2 }}>Recurrence</Text>
+                <Text style={{ fontSize: 16, color: colors.onSurface }}>
+                  {recurrenceOptions.find(r => r.value === recurrence)?.label || 'None'}
+                </Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-down" size={22} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+          <Portal>
+            <Modal
+              visible={recurrenceModal}
+              onDismiss={() => setRecurrenceModal(false)}
+              contentContainerStyle={{
+                margin: 20,
+                padding: 20,
+                backgroundColor: colors.surface,
+                borderRadius: 16,
+              }}
+            >
+              <Text style={{ fontWeight: 'bold', fontSize: 20, marginBottom: 16, color: colors.primary }}>Select Recurrence</Text>
+              {recurrenceOptions.map(opt => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={{
+                    paddingVertical: 14,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    backgroundColor: opt.value === recurrence ? colors.primaryContainer : 'transparent',
+                    marginBottom: 4,
+                  }}
+                  onPress={() => {
+                    setRecurrence(opt.value);
+                    setRecurrenceModal(false);
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 17,
+                    color: opt.value === recurrence ? colors.primary : colors.onSurface,
+                    fontWeight: opt.value === recurrence ? 'bold' : 'normal'
+                  }}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </Modal>
+          </Portal>
+          {recurrence !== 'none' && (
+            <>
+              <EnhancedDatePicker
+                value={recurrenceEndDate}
+                onValueChange={setRecurrenceEndDate}
+                label="Recurrence End Date"
+                placeholder="Select end date"
+                style={{ marginBottom: 12 }}
+              />
+            </>
+          )}
+
+          {/* Group Picker */}
+          <TouchableOpacity 
+            onPress={() => { setGroupModal(true); Keyboard.dismiss(); }} 
+            activeOpacity={0.7}
+            style={{ marginBottom: 12 }}
+          >
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              borderWidth: 2,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+              paddingHorizontal: 16,
+              minHeight: 56,
+              borderColor: colors.outline,
+            }}>
+              <MaterialCommunityIcons name="account-group" size={22} color={colors.primary} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 12, color: colors.onSurfaceVariant, marginBottom: 2 }}>Group (Optional)</Text>
+                <Text style={{ fontSize: 16, color: colors.onSurface }}>
+                  {selectedGroup === 'personal' ? 'Personal Expense' : groups.find(g => g.id === selectedGroup)?.name || 'Select Group'}
+                </Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-down" size={22} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
+          <Portal>
+            <Modal
+              visible={groupModal}
+              onDismiss={() => setGroupModal(false)}
+              contentContainerStyle={{
+                margin: 20,
+                padding: 20,
+                backgroundColor: colors.surface,
+                borderRadius: 16,
+              }}
+            >
+              <Text style={{ fontWeight: 'bold', fontSize: 20, marginBottom: 16, color: colors.primary }}>Select Group</Text>
+              <TouchableOpacity
+                style={{
+                  paddingVertical: 14,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  backgroundColor: selectedGroup === 'personal' ? colors.primaryContainer : 'transparent',
+                  marginBottom: 4,
+                }}
+                onPress={() => {
+                  setSelectedGroup('personal');
+                  setGroupModal(false);
+                }}
+              >
+                <Text style={{
+                  fontSize: 17,
+                  color: selectedGroup === 'personal' ? colors.primary : colors.onSurface,
+                  fontWeight: selectedGroup === 'personal' ? 'bold' : 'normal'
+                }}>
+                  Personal Expense
+                </Text>
+              </TouchableOpacity>
+              {groups.map(g => (
+                <TouchableOpacity
+                  key={g.id}
+                  style={{
+                    paddingVertical: 14,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    backgroundColor: g.id === selectedGroup ? colors.primaryContainer : 'transparent',
+                    marginBottom: 4,
+                  }}
+                  onPress={() => {
+                    setSelectedGroup(g.id);
+                    setGroupModal(false);
+                  }}
+                >
+                  <Text style={{
+                    fontSize: 17,
+                    color: g.id === selectedGroup ? colors.primary : colors.onSurface,
+                    fontWeight: g.id === selectedGroup ? 'bold' : 'normal'
+                  }}>
+                    {g.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </Modal>
+          </Portal>
+
+          {/* Split Expense */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginTop: 16 }}>
+            <Switch value={showSplit} onValueChange={setShowSplit} color={colors.primary} />
+            <Text style={{ marginLeft: 8, fontWeight: 'bold', fontSize: 16 }}>Split this Expense</Text>
+          </View>
+          {showSplit && (
+            <View style={{ marginBottom: 16 }}>
+              <TouchableOpacity 
+                onPress={() => { setSplitMethodModal(true); Keyboard.dismiss(); }} 
+                activeOpacity={0.7}
+                style={{ marginBottom: 12 }}
+              >
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 2,
+                  borderRadius: 12,
+                  backgroundColor: colors.surface,
+                  paddingHorizontal: 16,
+                  minHeight: 56,
+                  borderColor: colors.outline,
+                }}>
+                  <MaterialCommunityIcons name="swap-horizontal" size={22} color={colors.primary} style={{ marginRight: 12 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, color: colors.onSurfaceVariant, marginBottom: 2 }}>Split Method</Text>
+                    <Text style={{ fontSize: 16, color: colors.onSurface }}>
+                      {splitMethods.find(m => m.value === splitMethod)?.label || 'Select Method'}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-down" size={22} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
+              <Portal>
+                <Modal
+                  visible={splitMethodModal}
+                  onDismiss={() => setSplitMethodModal(false)}
+                  contentContainerStyle={{
+                    margin: 20,
+                    padding: 20,
+                    backgroundColor: colors.surface,
+                    borderRadius: 16,
+                  }}
+                >
+                  <Text style={{ fontWeight: 'bold', fontSize: 20, marginBottom: 16, color: colors.primary }}>Select Split Method</Text>
+                  {splitMethods.map(opt => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={{
+                        paddingVertical: 14,
+                        paddingHorizontal: 12,
+                        borderRadius: 10,
+                        backgroundColor: opt.value === splitMethod ? colors.primaryContainer : 'transparent',
+                        marginBottom: 4,
+                      }}
+                      onPress={() => {
+                        setSplitMethod(opt.value as any);
+                        setSplitMethodModal(false);
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 17,
+                        color: opt.value === splitMethod ? colors.primary : colors.onSurface,
+                        fontWeight: opt.value === splitMethod ? 'bold' : 'normal'
+                      }}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </Modal>
+              </Portal>
+              <Divider style={{ marginVertical: 8 }} />
+              <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>Participants</Text>
+              {participants.map((p: any) => (
+                <View key={p.uid} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, backgroundColor: p.selected ? colors.surface : 'transparent', borderRadius: 12, padding: 6 }}>
+                  <Switch value={p.selected} onValueChange={() => {
+                    setParticipants((prev: any[]) => prev.map((x: any) => x.uid === p.uid ? { ...x, selected: !x.selected } : x));
+                  }} color={colors.primary} />
+                  <Text style={{ marginLeft: 8, flex: 1 }}>{p.displayName || p.email || 'Unknown'}</Text>
+                  {splitMethod === 'byAmount' && p.selected && (
+                    <ModernInput
+                      label="Amount"
+                      value={p.amount}
+                      onChangeText={(v: string) => setParticipants((prev: any[]) => prev.map((x: any) => x.uid === p.uid ? { ...x, amount: v } : x))}
+                      keyboardType="decimal-pad"
+                      style={{ width: 80, marginLeft: 8 }}
+                    />
+                  )}
+                  {splitMethod === 'byPercentage' && p.selected && (
+                    <ModernInput
+                      label="%"
+                      value={p.percentage}
+                      onChangeText={(v: string) => setParticipants((prev: any[]) => prev.map((x: any) => x.uid === p.uid ? { ...x, percentage: v } : x))}
+                      keyboardType="decimal-pad"
+                      style={{ width: 60, marginLeft: 8 }}
+                    />
+                  )}
+                  {splitMethod === 'equally' && p.selected && (
+                    <Text style={{ marginLeft: 8 }}>
+                      {amount && participants.filter((x: any) => x.selected).length
+                        ? (parseFloat(amount) / participants.filter((x: any) => x.selected).length).toFixed(2)
+                        : '0.00'}
+                    </Text>
+                  )}
+                </View>
+              ))}
+              <Divider style={{ marginVertical: 8 }} />
+              {/* Paid By Picker */}
+              <TouchableOpacity 
+                onPress={() => { setPaidByModal(true); Keyboard.dismiss(); }} 
+                activeOpacity={0.7}
+                style={{ marginBottom: 12 }}
+              >
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 2,
+                  borderRadius: 12,
+                  backgroundColor: colors.surface,
+                  paddingHorizontal: 16,
+                  minHeight: 56,
+                  borderColor: colors.outline,
+                }}>
+                  <MaterialCommunityIcons name="account-check" size={22} color={colors.primary} style={{ marginRight: 12 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, color: colors.onSurfaceVariant, marginBottom: 2 }}>Paid By</Text>
+                    <Text style={{ fontSize: 16, color: colors.onSurface }}>
+                      {participants.find((p: any) => p.uid === paidBy)?.displayName || 'Select Person'}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-down" size={22} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
+              <Portal>
+                <Modal
+                  visible={paidByModal}
+                  onDismiss={() => setPaidByModal(false)}
+                  contentContainerStyle={{
+                    margin: 20,
+                    padding: 20,
+                    backgroundColor: colors.surface,
+                    borderRadius: 16,
+                  }}
+                >
+                  <Text style={{ fontWeight: 'bold', fontSize: 20, marginBottom: 16, color: colors.primary }}>Select Paid By</Text>
+                  {participants.filter((p: any) => p.selected).map((p: any) => (
+                    <TouchableOpacity
+                      key={p.uid}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: 14,
+                        paddingHorizontal: 12,
+                        borderRadius: 10,
+                        backgroundColor: p.uid === paidBy ? colors.primaryContainer : 'transparent',
+                        marginBottom: 4,
+                      }}
+                      onPress={() => {
+                        setPaidBy(p.uid);
+                        setPaidByModal(false);
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name="account"
+                        size={20}
+                        color={p.uid === paidBy ? colors.primary : colors.onSurfaceVariant}
+                        style={{ marginRight: 12 }}
+                      />
+                      <Text style={{
+                        fontSize: 17,
+                        color: p.uid === paidBy ? colors.primary : colors.onSurface,
+                        fontWeight: p.uid === paidBy ? 'bold' : 'normal'
+                      }}>
+                        {p.displayName || p.email || 'Unknown'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </Modal>
+              </Portal>
+            </View>
+          )}
+
+          {formError ? (
+            <Text style={{ color: colors.error, fontWeight: 'bold', textAlign: 'center', marginVertical: 8 }}>
+              {formError}
+            </Text>
+          ) : null}
+
+          <ModernButton
+            onPress={handleSubmit}
+            loading={loading}
+            style={{ borderRadius: 12, marginTop: 20, marginBottom: 12, height: 52 }}
+            title="Add Expense"
+            disabled={loading}
+            variant="primary"
+          />
+          <ModernButton
+            onPress={onClose}
+            style={{ borderRadius: 12, marginBottom: 8, height: 52 }}
+            title="Cancel"
+            variant="outline"
+          />
+        </ScrollView>
+        <Snackbar
+          visible={snackbar.visible}
+          onDismiss={() => setSnackbar({ visible: false, message: '' })}
+          duration={2500}
+          style={{ backgroundColor: colors.error }}
+        >
+          {snackbar.message}
+        </Snackbar>
+        {loading && <ActivityIndicator style={{ position: 'absolute', top: '50%', left: '50%' }}/> }
+      </Modal>
+    </Portal>
   );
-} 
+}

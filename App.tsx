@@ -1,8 +1,9 @@
-import { AuthProvider } from './firebase/AuthProvider';
-import { PaperProvider, MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Stack } from 'expo-router';
-import { ThemeProvider, useThemeMode } from './contexts/ThemeContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
+import { ThemeProvider, useThemeMode } from './contexts/ThemeContext';
+import { AuthProvider } from './firebase/AuthProvider';
 
 function Main() {
   const { theme } = useThemeMode();
@@ -19,9 +20,11 @@ function Main() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <Main />
-      </ThemeProvider>
+      <BottomSheetModalProvider>
+        <ThemeProvider>
+          <Main />
+        </ThemeProvider>
+      </BottomSheetModalProvider>
     </GestureHandlerRootView>
   );
-} 
+}

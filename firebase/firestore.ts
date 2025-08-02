@@ -2,102 +2,49 @@ import * as Notifications from 'expo-notifications';
 import { updateProfile } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, increment, limit, onSnapshot, orderBy, query, runTransaction, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { awardAchievement } from './achievements';
 import { auth, db, storage } from './config';
 
-// Basic types (expand as needed)
-export type Group = {
-  id: string;
-  name: string;
-  createdBy: string;
-  memberIds: string[];
-  memberDetails: any[];
-  imageUrl?: string;
-  createdAt: string;
-  updatedAt?: string;
-};
+import { ActivityActionType, Budget, ChatMessage, CreateSplitExpenseData, Expense, ExpenseFormData, Group, GroupActivityLogEntry, GroupContributionFormData, GroupGoalContribution, GroupMemberDetail, Income, IncomeFormData, SplitExpense, SplitParticipant, UserProfile, CurrencyCode, SUPPORTED_CURRENCIES } from '../constants/types';
 
-export type Expense = {
-  id: string;
-  description: string;
-  amount: number;
-  currency: string;
-  category: string;
-  date: string;
-  notes?: string;
-  groupId?: string;
-  groupName?: string;
-  createdAt: string;
-  userId: string;
-  paidById: string;
-  paidByName: string;
-};
+// Collection Names
+const USERS_COLLECTION = 'users';
+const EXPENSES_COLLECTION = 'expenses';
+const FRIEND_REQUESTS_COLLECTION = 'friend_requests';
+const FRIENDS_SUBCOLLECTION = 'friends';
+const GROUPS_COLLECTION = 'groups';
+const ACTIVITY_LOG_SUBCOLLECTION = 'activityLog';
+const INCOME_COLLECTION = 'income';
+const REMINDERS_COLLECTION = 'reminders';
+const BUDGETS_COLLECTION = 'budgets';
+const SPLIT_EXPENSES_COLLECTION = 'split_expenses';
+const SAVINGS_GOALS_COLLECTION = 'savings_goals';
+const GOAL_CONTRIBUTIONS_COLLECTION = 'goal_contributions';
+const GROUP_SAVINGS_GOALS_COLLECTION = 'group_savings_goals';
+const GROUP_GOAL_CONTRIBUTIONS_SUBCOLLECTION = 'contributions';
+const GROUP_INVITATIONS_COLLECTION = 'group_invitations';
+const GLOBAL_CATEGORIES_COLLECTION = 'global_categories';
+const APP_SETTINGS_COLLECTION = 'app_settings';
+const ANNOUNCEMENTS_COLLECTION = 'announcements';
+const INVESTMENTS_COLLECTION = 'investments';
+const SITE_CONTENT_COLLECTION = 'site_content';
+const BLOG_POSTS_COLLECTION = 'blog_posts';
+const NOTIFICATIONS_COLLECTION = 'notifications';
+const MAIL_COLLECTION = 'mail';
+const MESSAGES_COLLECTION = 'messages';
+const CHAT_MESSAGES_SUBCOLLECTION = 'chat_messages';
+const ACHIEVEMENTS_SUBCOLLECTION = 'achievements';
 
-export type SplitParticipant = {
-  userId: string;
-  displayName: string;
-  email: string;
-  amountOwed: number;
-  settlementStatus: 'settled' | 'unsettled' | 'pending';
-  percentage?: number;
-};
-
-export type SplitExpense = {
-  id: string;
-  originalExpenseId: string;
-  originalExpenseDescription: string;
-  currency: string;
-  splitMethod: 'equally' | 'byAmount' | 'byPercentage';
-  totalAmount: number;
-  paidBy: string;
-  participants: SplitParticipant[];
-  involvedUserIds: string[];
-  groupId?: string;
-  groupName?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type GroupActivityLogEntry = {
-  id: string;
-  actorId: string;
-  actorDisplayName: string;
-  actionType: string;
-  details: string;
-  timestamp: string;
-};
-
-export type ChatMessage = {
-  id: string;
-  groupId: string;
-  userId: string;
-  userDisplayName: string;
-  userAvatarUrl?: string;
-  text: string;
-  createdAt: string;
-};
-
-export type Income = {
-  id: string;
-  source: string;
-  amount: number;
-  currency: string;
-  date: string;
-  notes?: string;
-  createdAt: string;
-  userId: string;
-};
-
-// TODO: Define types Expense, Friend, Group, SplitExpense as needed
-
-export async function getRecentExpensesByUser(userId: string, count: number = 5) {
-  if (!userId) return [];
-  // For simplicity, just get all and slice (optimize later)
-  const expensesRef = collection(db, 'expenses');
-  const q = query(expensesRef, where('userId', '==', userId), orderBy('date', 'desc'));
-  const querySnapshot = await getDocs(q);
-  const expenses = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  return expenses.slice(0, count);
+export async function getRecentExpensesByUser(userId: string, count: number = 5): Promise<Expense[]> {
+ try {
+    if (!userId) return [];
+    const expenses = await getExpensesByUser(userId);
+    // Already sorted by date descending in getExpensesByUser
+    return expenses.slice(0, count);
+  } catch (error) {
+    console.error("[firestore.getRecentExpensesByUser] Error getting recent documents: ", error);
+    throw error;
+  }
 }
 
 // Fetch friends from users/{userId}/friends subcollection (web logic)
@@ -110,21 +57,65 @@ export async function getFriends(userId: string) {
 }
 
 // Fetch groups where memberIds contains userId (web logic)
-export async function getGroupsForUser(userId: string) {
+export async function getGroupsForUser(userId: string): Promise<Group[]> {
   if (!userId) return [];
   const groupsRef = collection(db, 'groups');
   const q = query(groupsRef, where('memberIds', 'array-contains', userId));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const groupsWithMemberProfiles = await Promise.all(querySnapshot.docs.map(async docSnap => {
+    const groupData = docSnap.data();
+    const memberIds = groupData.memberIds || [];
+    const memberProfiles: { uid: string; displayName: string; email: string; role: string; profilePictureUrl?: string }[] = [];
+
+    for (const memberId of memberIds) {
+      const userProfile = await getUserProfile(memberId);
+      if (userProfile) {
+        memberProfiles.push({
+          uid: userProfile.uid,
+          displayName: userProfile.displayName || userProfile.email.split('@')[0],
+          email: userProfile.email,
+          role: groupData.createdBy === userProfile.uid ? 'creator' : 'member', // Determine role
+          profilePictureUrl: userProfile.photoURL || undefined,
+        });
+      }
+    }
+
+    return {
+      id: docSnap.id,
+      ...groupData,
+      memberDetails: memberProfiles, // Populate with full member profiles
+    } as Group;
+  }));
+
+  return groupsWithMemberProfiles;
 }
 
 // Fetch all splits where involvedUserIds contains userId (web logic)
-export async function getSplitExpensesForUser(userId: string) {
+export async function getSplitExpensesForUser(userId: string): Promise<SplitExpense[]> {
   if (!userId) return [];
   const splitsRef = collection(db, 'split_expenses');
   const q = query(splitsRef, where('involvedUserIds', 'array-contains', userId));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return querySnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      originalExpenseId: data.originalExpenseId || '',
+      originalExpenseDescription: data.originalExpenseDescription || 'Split Expense',
+      currency: data.currency || 'USD',
+      splitMethod: data.splitMethod || 'equally',
+      totalAmount: typeof data.totalAmount === 'number' ? data.totalAmount : 0,
+      paidBy: data.paidBy || '',
+      participants: data.participants || [],
+      involvedUserIds: data.involvedUserIds || [],
+      groupId: data.groupId || undefined,
+      groupName: data.groupName || undefined,
+      notes: data.notes || '',
+      createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '',
+      updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : '',
+    };
+  });
 }
 
 export async function getGroupDetails(groupId: string): Promise<Group | null> {
@@ -204,17 +195,96 @@ export async function getSplitExpensesByGroupId(groupId: string): Promise<SplitE
   });
 }
 
-export async function createSplitExpense(splitData: Omit<SplitExpense, 'id' | 'createdAt' | 'updatedAt'> & { actorProfile?: any }): Promise<string> {
-  // This is a simplified version; expand as needed for validation
-  const dataToSave = {
-    ...splitData,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-  };
-  const docRef = await addDoc(collection(db, 'split_expenses'), dataToSave);
-  return docRef.id;
-}
 
+export async function createSplitExpense(splitData: CreateSplitExpenseData): Promise<string> {
+  try {
+    if (!splitData.paidBy) throw new Error("Payer ID (paidBy) is required.");
+    if (!splitData.originalExpenseId) throw new Error("Original expense ID is required.");
+    if (!splitData.originalExpenseDescription) throw new Error("Original expense description is required.");
+    if (splitData.participants.length === 0) throw new Error("At least one participant is required.");
+
+    let validatedParticipants = [...splitData.participants];
+
+    if (splitData.splitMethod === 'byAmount') {
+      const calculatedTotalOwed = validatedParticipants.reduce((sum, p) => sum + p.amountOwed, 0);
+      if (Math.abs(calculatedTotalOwed - splitData.totalAmount) > 0.01) {
+        throw new Error(`Sum of amounts owed (${calculatedTotalOwed.toFixed(2)}) by participants does not match total expense amount (${splitData.totalAmount.toFixed(2)}).`);
+      }
+    } else if (splitData.splitMethod === 'byPercentage') {
+      const totalPercentage = validatedParticipants.reduce((sum, p) => sum + (p.percentage || 0), 0);
+      if (Math.abs(totalPercentage - 100) > 0.01) {
+        throw new Error(`Sum of percentages (${totalPercentage.toFixed(2)}%) does not equal 100%.`);
+      }
+      validatedParticipants = validatedParticipants.map(p => ({
+        ...p,
+        amountOwed: parseFloat(((splitData.totalAmount * (p.percentage || 0)) / 100).toFixed(2)),
+      }));
+    } else if (splitData.splitMethod === 'equally') {
+      const numParticipants = validatedParticipants.length;
+      if (numParticipants === 0) throw new Error("Cannot split equally with zero participants.");
+      const amountPerPerson = parseFloat((splitData.totalAmount / numParticipants).toFixed(2));
+      // Adjust for rounding for the last participant
+      let sumOfCalculatedAmounts = 0;
+      validatedParticipants = validatedParticipants.map((p, index) => {
+        let currentAmountOwed = amountPerPerson;
+        if (index === numParticipants - 1) {
+            currentAmountOwed = parseFloat((splitData.totalAmount - sumOfCalculatedAmounts).toFixed(2));
+        } else {
+            sumOfCalculatedAmounts += amountPerPerson;
+        }
+        return {...p, amountOwed: currentAmountOwed};
+      });
+    }
+
+    const finalParticipants = validatedParticipants.map(p => ({
+      ...p,
+      settlementStatus: p.userId === splitData.paidBy ? 'settled' : 'unsettled',
+    } as SplitParticipant));
+
+
+    const involvedUserIds = Array.from(new Set([splitData.paidBy, ...finalParticipants.map(p => p.userId)]));
+
+    const dataToSave: Omit<SplitExpense, 'id' | 'createdAt' | 'updatedAt'> & {createdAt: Timestamp, updatedAt: Timestamp} = {
+      originalExpenseId: splitData.originalExpenseId,
+      originalExpenseDescription: splitData.originalExpenseDescription,
+      currency: splitData.currency,
+      splitMethod: splitData.splitMethod,
+      totalAmount: splitData.totalAmount,
+      paidBy: splitData.paidBy,
+      participants: finalParticipants,
+      involvedUserIds,
+      groupId: splitData.groupId || null,
+      groupName: splitData.groupName || null,
+      notes: splitData.notes || '',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
+
+    const docRef = await addDoc(collection(db, SPLIT_EXPENSES_COLLECTION), dataToSave);
+
+    if (splitData.groupId && splitData.actorProfile) {
+      await logGroupActivity(splitData.groupId, {
+        actorId: splitData.actorProfile.uid,
+        actorDisplayName: splitData.actorProfile.displayName || splitData.actorProfile.email,
+        actionType: ActivityActionType.EXPENSE_SPLIT_IN_GROUP,
+        details: `split the expense "${splitData.originalExpenseDescription}" among ${splitData.participants.length} members in group "${splitData.groupName || 'Unknown Group'}"`,
+        relatedExpenseId: splitData.originalExpenseId,
+        relatedExpenseName: splitData.originalExpenseDescription,
+      });
+    }
+    
+    // Achievement check
+    if (splitData.actorProfile) {
+        await awardAchievement(splitData.actorProfile.uid, 'FIRST_SPLIT');
+    }
+
+    return docRef.id;
+  } catch (error) {
+    console.error("[firestore.createSplitExpense] Error creating split expense: ", error);
+    throw error;
+  }
+}
+ 
 export async function settleDebtWithWallet(splitId: string, settlingUserId: string): Promise<void> {
   // Minimal wallet logic for demo; expand as needed
   return runTransaction(db, async (transaction) => {
@@ -246,6 +316,76 @@ export async function settleDebtWithWallet(splitId: string, settlingUserId: stri
   });
 }
 
+export async function requestSettlementApproval(splitExpenseId: string, actorProfile: UserProfile): Promise<void> {
+  try {
+    const splitRef = doc(db, 'split_expenses', splitExpenseId);
+    const splitDoc = await getDoc(splitRef);
+    if (!splitDoc.exists()) throw new Error('Split expense not found.');
+    
+    const splitData = splitDoc.data() as SplitExpense;
+    const participant = splitData.participants.find(p => p.userId === actorProfile.uid);
+    if (!participant) throw new Error('You are not a participant in this split.');
+    if (participant.settlementStatus !== 'unsettled') throw new Error('This debt is either already settled or pending approval.');
+    
+    const updatedParticipants = splitData.participants.map(p =>
+      p.userId === actorProfile.uid ? { ...p, settlementStatus: 'pending_approval' } : p
+    );
+    
+    await updateDoc(splitRef, { participants: updatedParticipants });
+  } catch (error) {
+    console.error("[firestore.requestSettlementApproval] Error requesting settlement approval: ", error);
+    throw error;
+  }
+}
+
+export async function approveSettlement(splitExpenseId: string, participantUserId: string, actorProfile: UserProfile): Promise<void> {
+  try {
+    const splitRef = doc(db, 'split_expenses', splitExpenseId);
+    const splitDoc = await getDoc(splitRef);
+    if (!splitDoc.exists()) throw new Error('Split expense not found.');
+    
+    const splitData = splitDoc.data() as SplitExpense;
+    if (splitData.paidBy !== actorProfile.uid) throw new Error('Only the payer can approve settlements.');
+    
+    const participant = splitData.participants.find(p => p.userId === participantUserId);
+    if (!participant) throw new Error('Participant not found in this split.');
+    if (participant.settlementStatus !== 'pending_approval') throw new Error('This settlement is not pending approval.');
+    
+    const updatedParticipants = splitData.participants.map(p =>
+      p.userId === participantUserId ? { ...p, settlementStatus: 'settled' } : p
+    );
+    
+    await updateDoc(splitRef, { participants: updatedParticipants });
+  } catch (error) {
+    console.error("[firestore.approveSettlement] Error approving settlement: ", error);
+    throw error;
+  }
+}
+
+export async function rejectSettlement(splitExpenseId: string, participantUserId: string, actorProfile: UserProfile): Promise<void> {
+  try {
+    const splitRef = doc(db, 'split_expenses', splitExpenseId);
+    const splitDoc = await getDoc(splitRef);
+    if (!splitDoc.exists()) throw new Error('Split expense not found.');
+    
+    const splitData = splitDoc.data() as SplitExpense;
+    if (splitData.paidBy !== actorProfile.uid) throw new Error('Only the payer can reject settlements.');
+    
+    const participant = splitData.participants.find(p => p.userId === participantUserId);
+    if (!participant) throw new Error('Participant not found in this split.');
+    if (participant.settlementStatus !== 'pending_approval') throw new Error('This settlement is not pending approval.');
+    
+    const updatedParticipants = splitData.participants.map(p =>
+      p.userId === participantUserId ? { ...p, settlementStatus: 'unsettled' } : p
+    );
+    
+    await updateDoc(splitRef, { participants: updatedParticipants });
+  } catch (error) {
+    console.error("[firestore.rejectSettlement] Error rejecting settlement: ", error);
+    throw error;
+  }
+}
+ 
 export async function updateSplitExpense(
   splitExpenseId: string,
   updates: {
@@ -321,7 +461,7 @@ export async function updateSplitExpense(
     involvedUserIds,
   });
 }
-
+ 
 export async function getGroupActivityLog(groupId: string, limitCount: number = 20): Promise<GroupActivityLogEntry[]> {
   if (!groupId) return [];
   const logRef = collection(db, 'groups', groupId, 'activityLog');
@@ -339,7 +479,7 @@ export async function getGroupActivityLog(groupId: string, limitCount: number = 
     };
   });
 }
-
+ 
 export function getChatMessages(groupId: string, callback: (messages: ChatMessage[]) => void): () => void {
   const chatMessagesRef = collection(db, 'groups', groupId, 'chat_messages');
   const q = query(chatMessagesRef, orderBy('createdAt', 'asc'), limit(50));
@@ -362,7 +502,7 @@ export function getChatMessages(groupId: string, callback: (messages: ChatMessag
   });
   return unsubscribe;
 }
-
+ 
 export async function addChatMessage(groupId: string, userId: string, userDisplayName: string, userAvatarUrl: string | null, text: string): Promise<void> {
   if (!groupId || !userId || !text.trim()) {
     throw new Error("Missing required fields to send chat message.");
@@ -377,7 +517,7 @@ export async function addChatMessage(groupId: string, userId: string, userDispla
     createdAt: Timestamp.now(),
   });
 }
-
+ 
 export async function getUserProfile(userId: string): Promise<any | null> {
   if (!userId) return null;
   const userRef = doc(db, 'users', userId);
@@ -403,28 +543,59 @@ export async function getUserProfile(userId: string): Promise<any | null> {
   }
   return null;
 }
-
-export async function getGroupInvitationsForUser(userEmail: string | null): Promise<any[]> {
-  if (!userEmail) return [];
-  const q = query(
-    collection(db, 'group_invitations'),
-    where('inviteeEmail', '==', userEmail.toLowerCase()),
-    where('status', '==', 'pending'),
-    orderBy('createdAt', 'desc')
-  );
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(docSnap => {
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      groupName: data.groupName || '',
-      inviterDisplayName: data.inviterDisplayName || '',
-      createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '',
-      ...data,
-    };
-  });
+ 
+export async function getGroupInvitationsForUser(userEmail: string | null, userPhoneNumber: string | null): Promise<any[]> {
+  const invitations: any[] = [];
+ 
+  // Fetch by email if available
+  if (userEmail) {
+    const qEmail = query(
+      collection(db, 'group_invitations'),
+      where('inviteeEmail', '==', userEmail.toLowerCase()),
+      where('status', '==', 'pending'),
+      orderBy('createdAt', 'desc')
+    );
+    const querySnapshotEmail = await getDocs(qEmail);
+    querySnapshotEmail.forEach(docSnap => {
+      const data = docSnap.data();
+      invitations.push({
+        id: docSnap.id,
+        groupName: data.groupName || '',
+        inviterDisplayName: data.inviterDisplayName || '',
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '',
+        ...data,
+      });
+    });
+  }
+ 
+  // Fetch by phone number if available and different from email
+  if (userPhoneNumber) {
+    const qPhone = query(
+      collection(db, 'group_invitations'),
+      where('inviteePhoneNumber', '==', userPhoneNumber),
+      where('status', '==', 'pending'),
+      orderBy('createdAt', 'desc')
+    );
+    const querySnapshotPhone = await getDocs(qPhone);
+    querySnapshotPhone.forEach(docSnap => {
+      const data = docSnap.data();
+      // Only add if not already added by email (to avoid duplicates)
+      if (!invitations.some(invite => invite.id === docSnap.id)) {
+        invitations.push({
+          id: docSnap.id,
+          groupName: data.groupName || '',
+          inviterDisplayName: data.inviterDisplayName || '',
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '',
+          ...data,
+        });
+      }
+    });
+  }
+ 
+  // Sort by createdAt to maintain consistent order
+  return invitations.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
-
+ 
 export async function acceptGroupInvitation(invitation: any, userProfile: any): Promise<void> {
   if (!invitation || !userProfile) throw new Error('Missing invitation or user profile');
   const groupRef = doc(db, 'groups', invitation.groupId);
@@ -452,7 +623,7 @@ export async function acceptGroupInvitation(invitation: any, userProfile: any): 
     transaction.update(inviteRef, { status: 'accepted' });
   });
 }
-
+ 
 export async function getGroupSavingsGoalsByGroupId(groupId: string): Promise<any[]> {
   if (!groupId) return [];
   const q = query(
@@ -470,7 +641,7 @@ export async function getGroupSavingsGoalsByGroupId(groupId: string): Promise<an
     };
   });
 }
-
+ 
 export async function addGroupSavingsGoal(
   creatorProfile: any,
   groupId: string,
@@ -495,38 +666,29 @@ export async function addGroupSavingsGoal(
   // TODO: log group activity for goal creation (for full parity with web)
   return docRef.id;
 }
-
+ 
 // Add group savings goal contribution functions
 // --- Types (ensure these are present) ---
-import { GroupContributionFormData, GroupGoalContribution, UserProfile } from '../constants/types';
-// Remove duplicate Firestore imports below, keep only one set at the top:
-// import { Timestamp, doc, runTransaction, increment, collection, query, orderBy, getDocs } from 'firebase/firestore';
-// import { db } from './config';
-
-// Firestore collection constants (add if missing)
-const GROUPS_COLLECTION = 'groups';
-const ACTIVITY_LOG_SUBCOLLECTION = 'activityLog';
-
+ 
 // Full implementation of logGroupActivity for group activity logging
 async function logGroupActivity(
   groupId: string,
-  activityData: Omit<GroupActivityLogEntry, 'id' | 'timestamp'> & { timestamp?: Timestamp }
+  activityData: Omit<GroupActivityLogEntry, 'id' | 'timestamp'> & { timestamp?: Timestamp, relatedMemberId?: string | null, relatedMemberName?: string | null }
 ): Promise<void> {
   try {
     const logRef = collection(db, GROUPS_COLLECTION, groupId, ACTIVITY_LOG_SUBCOLLECTION);
     await addDoc(logRef, {
       ...activityData,
       timestamp: activityData.timestamp || Timestamp.now(),
+      relatedMemberId: activityData.relatedMemberId || null,
+      relatedMemberName: activityData.relatedMemberName || null,
     });
   } catch (error) {
     console.error(`Error logging activity for group ${groupId}:`, error);
     // Optionally, decide if this error should propagate or be handled silently
   }
 }
-
-const GROUP_SAVINGS_GOALS_COLLECTION = 'group_savings_goals';
-const GROUP_GOAL_CONTRIBUTIONS_SUBCOLLECTION = 'contributions';
-
+ 
 // --- Web-parity addContributionToGroupGoal ---
 export async function addContributionToGroupGoal(
   actorProfile: UserProfile,
@@ -536,17 +698,17 @@ export async function addContributionToGroupGoal(
 ): Promise<void> {
   const goalRef = doc(db, GROUP_SAVINGS_GOALS_COLLECTION, goalId);
   const contributionRef = doc(collection(goalRef, GROUP_GOAL_CONTRIBUTIONS_SUBCOLLECTION));
-
+ 
   await runTransaction(db, async (transaction) => {
     const goalDoc = await transaction.get(goalRef);
     if (!goalDoc.exists()) throw new Error('Savings goal not found.');
-
+ 
     const contributionAmount = parseFloat(contributionData.amount);
     transaction.update(goalRef, {
       currentAmount: increment(contributionAmount),
       updatedAt: Timestamp.now(),
     });
-
+ 
     const newContribution: Omit<GroupGoalContribution, 'id'> = {
       goalId,
       groupId,
@@ -557,18 +719,18 @@ export async function addContributionToGroupGoal(
       date: new Date().toISOString(),
     };
     transaction.set(contributionRef, newContribution);
-
+ 
     // After transaction logic, log activity
     const goalData = goalDoc.data();
     await logGroupActivity(groupId, {
       actorId: actorProfile.uid,
       actorDisplayName: actorProfile.displayName || (actorProfile.email || ''),
-      actionType: 'GROUP_GOAL_CONTRIBUTION',
+      actionType: ActivityActionType.GROUP_GOAL_CONTRIBUTION,
       details: `contributed ${contributionAmount} to the goal: "${goalData.name}"`,
     });
   });
 }
-
+ 
 export async function getContributionsForGroupGoal(goalId: string): Promise<any[]> {
   if (!goalId) return [];
   const contributionsRef = collection(db, 'group_savings_goals', goalId, 'contributions');
@@ -579,7 +741,7 @@ export async function getContributionsForGroupGoal(goalId: string): Promise<any[
     ...docSnap.data(),
   }));
 }
-
+ 
 // Member management actions
 export async function removeMemberFromGroup(groupId: string, actorProfile: any, memberIdToRemove: string, memberDisplayName: string): Promise<void> {
   if (!groupId || !actorProfile || !memberIdToRemove) throw new Error('Missing required fields');
@@ -594,7 +756,7 @@ export async function removeMemberFromGroup(groupId: string, actorProfile: any, 
     // Optionally log activity
   });
 }
-
+ 
 export async function updateMemberRole(groupId: string, actorProfile: any, memberId: string, newRole: 'admin' | 'member'): Promise<void> {
   if (!groupId || !actorProfile || !memberId || !newRole) throw new Error('Missing required fields');
   const groupRef = doc(db, 'groups', groupId);
@@ -607,7 +769,7 @@ export async function updateMemberRole(groupId: string, actorProfile: any, membe
     // Optionally log activity
   });
 }
-
+ 
 export async function transferGroupOwnership(groupId: string, actorProfile: any, newCreatorId: string): Promise<void> {
   if (!groupId || !actorProfile || !newCreatorId) throw new Error('Missing required fields');
   const groupRef = doc(db, 'groups', groupId);
@@ -624,7 +786,7 @@ export async function transferGroupOwnership(groupId: string, actorProfile: any,
     // Optionally log activity
   });
 }
-
+ 
 export async function addMembersToGroup(groupId: string, actorProfile: any, newMembers: any[]): Promise<void> {
   if (!groupId || !actorProfile || !newMembers || newMembers.length === 0) throw new Error('Missing required fields');
   const groupRef = doc(db, 'groups', groupId);
@@ -648,7 +810,7 @@ export async function addMembersToGroup(groupId: string, actorProfile: any, newM
     // Optionally log activity
   });
 }
-
+ 
 export async function createUserProfile(
   userId: string,
   email: string | null,
@@ -687,7 +849,7 @@ export async function createUserProfile(
     });
   }
 }
-
+ 
 // Fetch incoming friend requests for a user
 export async function getIncomingFriendRequests(userId: string) {
   if (!userId) return [];
@@ -706,7 +868,7 @@ export async function getIncomingFriendRequests(userId: string) {
     };
   });
 }
-
+ 
 // Send a friend request by email or phone
 export async function sendFriendRequest(
   fromUserId: string,
@@ -759,7 +921,7 @@ export async function sendFriendRequest(
   });
   return { success: true, message: 'Friend request sent.' };
 }
-
+ 
 // Send a debt reminder (push/email/SMS)
 export async function sendDebtReminder(
   fromUserProfile: any,
@@ -778,7 +940,7 @@ export async function sendDebtReminder(
   const formattedAmount = `${amount.toFixed(2)} ${currency}`;
   const fromName = fromUserProfile.displayName || fromUserProfile.email;
   const toName = toUser.displayName || toUser.email || toUser.phoneNumber;
-
+ 
   if (type === 'push') {
     const notificationsCollectionRef = collection(db, 'notifications');
     await addDoc(notificationsCollectionRef, {
@@ -821,7 +983,7 @@ export async function sendDebtReminder(
     });
   }
 }
-
+ 
 // Accept a friend request
 export async function acceptFriendRequest(requestId: string, fromUserProfile: any, toUserProfile: any): Promise<void> {
   const requestRef = doc(db, 'friend_requests', requestId);
@@ -856,13 +1018,13 @@ export async function acceptFriendRequest(requestId: string, fromUserProfile: an
     transaction.delete(requestRef);
   });
 }
-
+ 
 // Reject a friend request
 export async function rejectFriendRequest(requestId: string): Promise<void> {
   const requestRef = doc(db, 'friend_requests', requestId);
   await deleteDoc(requestRef);
 }
-
+ 
 // Remove a friend
 export async function removeFriend(currentUserId: string, friendUserId: string): Promise<void> {
   const currentUserFriendRef = doc(db, 'users', currentUserId, 'friends', friendUserId);
@@ -872,43 +1034,43 @@ export async function removeFriend(currentUserId: string, friendUserId: string):
     deleteDoc(friendUserFriendRef),
   ]);
 }
-
+ 
 // Local updateUserProfile implementation
 const updateUserProfile = async (uid: string, updates: { displayName?: string; defaultCurrency?: string }) => {
   const userRef = doc(db, 'users', uid);
   await updateDoc(userRef, updates);
 };
-
+ 
 // User Profile Photo Upload
 export const updateUserProfilePhoto = async (userId: string, photoUri: string): Promise<string> => {
   if (!photoUri) throw new Error("No photo URI provided.");
-
+ 
   // Fetch the image as a blob
   const response = await fetch(photoUri);
   const blob = await response.blob();
-
+ 
   const storageRef = ref(storage, `profile-pictures/${userId}`);
   // Upload the blob
   await uploadBytes(storageRef, blob);
   const downloadURL = await getDownloadURL(storageRef);
-
+ 
   const userRef = doc(db, 'users', userId);
   await updateDoc(userRef, { photoURL: downloadURL, updatedAt: Timestamp.now() });
-
+ 
   if (auth.currentUser && auth.currentUser.uid === userId) {
     await updateProfile(auth.currentUser, { photoURL: downloadURL });
   }
-
+ 
   return downloadURL;
 };
-
+ 
 // Subscription Management
 export const upgradeUserToPremium = async (userId: string, period: 'monthly' | 'yearly'): Promise<void> => {
   console.log(`[mobile] Upgrading user ${userId} to premium ${period}`);
   const userRef = doc(db, 'users', userId);
   const now = new Date();
   const periodEnd = new Date(now);
-
+ 
   if (period === 'monthly') {
     periodEnd.setMonth(periodEnd.getMonth() + 1);
   } else {
@@ -927,7 +1089,7 @@ export const upgradeUserToPremium = async (userId: string, period: 'monthly' | '
   await updateDoc(userRef, { subscription: subscriptionUpdate });
   console.log(`[mobile] User upgraded successfully`);
 };
-
+ 
 export const cancelUserSubscription = async (userId: string): Promise<void> => {
   console.log(`[mobile] Canceling subscription for user ${userId}`);
   
@@ -951,11 +1113,11 @@ export const cancelUserSubscription = async (userId: string): Promise<void> => {
     status: 'active',
     startedAt: new Date().toISOString(),
   };
-
+ 
   const updatePayload = {
     subscription: freeSubscriptionUpdate
   };
-
+ 
   console.log(`[mobile] Cancel subscription payload:`, updatePayload);
   
   try {
@@ -971,32 +1133,99 @@ export const cancelUserSubscription = async (userId: string): Promise<void> => {
     throw updateError;
   }
 }; 
-
+ 
 export async function getExpensesByUser(userId: string): Promise<Expense[]> {
-  if (!userId) return [];
-  const expensesRef = collection(db, 'expenses');
-  const q = query(expensesRef, where('userId', '==', userId), orderBy('date', 'desc'));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      description: data.description || 'No description',
-      amount: typeof data.amount === 'number' ? data.amount : 0,
-      currency: data.currency || 'USD',
-      category: data.category || 'Other',
-      date: data.date?.toDate ? data.date.toDate().toISOString().split('T')[0] : '',
-      notes: data.notes || '',
-      groupId: data.groupId || undefined,
-      groupName: data.groupName || undefined,
-      createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '',
-      userId: data.userId || 'Unknown User',
-      paidById: data.paidById || data.userId || 'Unknown User',
-      paidByName: data.paidByName || 'Unknown Payer',
-    };
-  });
-}
+  try {
+    if (!userId) {
+      return [];
+    }
+    
+    // Part 1: Fetch user's own created expenses
+    const expensesQuery = query(collection(db, EXPENSES_COLLECTION), where('userId', '==', userId));
+    const expensesSnapshot = await getDocs(expensesQuery);
+    const userExpenses = expensesSnapshot.docs
+      .map(doc => mapExpenseDocumentToExpenseObject(doc))
+      .filter(Boolean) as Expense[];
 
+    // Part 2: Fetch splits and create "virtual" expenses for the user's share
+    const splitsQuery = query(collection(db, SPLIT_EXPENSES_COLLECTION), where('involvedUserIds', 'array-contains', userId));
+    const splitsSnapshot = await getDocs(splitsQuery);
+    
+    const virtualExpenses: Expense[] = [];
+    const splitsToProcess = splitsSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() } as SplitExpense & { id: string }))
+      .filter(split => {
+        const participant = split.participants.find(p => p.userId === userId);
+        // We want splits where the user is a participant but NOT the sole payer of the whole amount
+        return participant && split.paidBy !== userId;
+      });
+
+    if (splitsToProcess.length > 0) {
+      // Batch-fetch the original expense documents for context
+      const originalExpenseIds = Array.from(new Set(splitsToProcess.map(s => s.originalExpenseId)));
+      const originalExpensesMap = new Map<string, Expense>();
+
+      // Firestore 'in' query is limited to 30 items
+      const idChunks = [];
+      for (let i = 0; i < originalExpenseIds.length; i += 30) {
+        idChunks.push(originalExpenseIds.slice(i, i + 30));
+      }
+
+      for (const chunk of idChunks) {
+        if (chunk.length > 0) {
+          const originalExpensesQuery = query(collection(db, EXPENSES_COLLECTION), where('__name__', 'in', chunk));
+          const originalExpensesSnapshot = await getDocs(originalExpensesQuery);
+          originalExpensesSnapshot.forEach(doc => {
+            const expense = mapExpenseDocumentToExpenseObject(doc);
+            if (expense) {
+              originalExpensesMap.set(doc.id, expense);
+            }
+          });
+        }
+      }
+
+      splitsToProcess.forEach(split => {
+        const participant = split.participants.find(p => p.userId === userId)!;
+        const originalExpense = originalExpensesMap.get(split.originalExpenseId);
+        
+        if (originalExpense) {
+          virtualExpenses.push({
+            ...originalExpense,
+            id: `${split.id!}-${userId}`,
+            description: `[Split] ${split.originalExpenseDescription}`,
+            amount: participant.amountOwed,
+            notes: `Your share of an expense paid by ${originalExpense.paidByName}. Original notes: ${originalExpense.notes || ''}`,
+            userId: userId,
+            isSplitShare: true,
+            isRecurring: false,
+            recurrence: 'none',
+            recurrenceEndDate: undefined,
+          });
+        }
+      });
+    }
+
+    const allUserFinancialEvents = [...userExpenses, ...virtualExpenses];
+    allUserFinancialEvents.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateB !== dateA) {
+        return dateB - dateA;
+      }
+      // if dates are same, sort by creation time if available
+      const createdA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const createdB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return createdB - createdA;
+    });
+    
+    return allUserFinancialEvents;
+
+  } catch (error: any) {
+    console.error("[firestore.getExpensesByUser] Error getting documents: ", error);
+    throw error;
+  }
+}
+ 
 export async function addExpense(userId: string, expenseData: any, userProfile: any, source?: 'manual' | 'ocr' | 'import'): Promise<string> {
   if (!userId) throw new Error('User ID is required to add an expense.');
   if (!expenseData.description || !expenseData.amount || !expenseData.currency || !expenseData.category || !expenseData.date) {
@@ -1022,7 +1251,7 @@ export async function addExpense(userId: string, expenseData: any, userProfile: 
     groupName: expenseData.groupName || null,
   };
   const docRef = await addDoc(collection(db, 'expenses'), expenseDoc);
-
+ 
   // Budget notification logic
   try {
     const budgets = await getBudgetsByUser(userId);
@@ -1050,16 +1279,16 @@ export async function addExpense(userId: string, expenseData: any, userProfile: 
   } catch (e) {
     // Ignore notification errors
   }
-
+ 
   return docRef.id;
 }
-
+ 
 export async function deleteExpense(expenseId: string): Promise<void> {
   if (!expenseId) return;
   const expenseRef = doc(db, 'expenses', expenseId);
   await deleteDoc(expenseRef);
 } 
-
+ 
 // Update group name and/or other details
 export async function updateGroupDetails(
   groupId: string,
@@ -1068,14 +1297,14 @@ export async function updateGroupDetails(
 ): Promise<void> {
   const groupRef = doc(db, 'groups', groupId);
   const batch = writeBatch(db);
-
+ 
   const groupSnap = await getDoc(groupRef);
   if (!groupSnap.exists()) throw new Error('Group not found for update.');
   const existingGroupData = groupSnap.data();
-
+ 
   const updateData: { [key: string]: any } = { ...data, updatedAt: Timestamp.now() };
   batch.update(groupRef, updateData);
-
+ 
   if (data.name && existingGroupData.name !== data.name) {
     // Update groupName in associated expenses
     const expensesQuery = query(collection(db, 'expenses'), where('groupId', '==', groupId));
@@ -1086,14 +1315,13 @@ export async function updateGroupDetails(
     await logGroupActivity(groupId, {
       actorId: actorProfile.uid,
       actorDisplayName: actorProfile.displayName || actorProfile.email,
-      actionType: 'GROUP_NAME_UPDATED',
+      actionType: ActivityActionType.GROUP_NAME_UPDATED,
       details: `changed group name from "${existingGroupData.name}" to "${data.name}"`,
     });
   }
   await batch.commit();
 }
-
-// Update group image
+ 
 export async function updateGroupImageUrl(groupId: string, imageUrl: string): Promise<void> {
   const groupRef = doc(db, 'groups', groupId);
   await updateDoc(groupRef, {
@@ -1101,7 +1329,7 @@ export async function updateGroupImageUrl(groupId: string, imageUrl: string): Pr
     updatedAt: Timestamp.now(),
   });
 } 
-
+ 
 export async function getIncomeByUser(userId: string): Promise<Income[]> {
   if (!userId) return [];
   const incomeRef = collection(db, 'income');
@@ -1119,30 +1347,89 @@ export async function getIncomeByUser(userId: string): Promise<Income[]> {
         notes: data.notes || '',
         createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : '',
         userId: data.userId || 'Unknown User',
+        isRecurring: data.isRecurring || false,
+        recurrence: data.recurrence || 'none',
+        recurrenceEndDate: data.recurrenceEndDate?.toDate ? data.recurrenceEndDate.toDate().toISOString().split('T')[0] : undefined,
+        lastInstanceCreated: data.lastInstanceCreated?.toDate ? data.lastInstanceCreated.toDate().toISOString().split('T')[0] : undefined,
       };
     });
   } catch (error) {
     console.error('[mobile] Error getting income:', error);
     return [];
   }
-} 
+}
 
-export type BudgetPeriod = "weekly" | "monthly" | "yearly" | "custom";
-export type Budget = {
-  id?: string;
-  userId: string;
-  name: string;
-  category: string;
-  amount: number;
-  currency: string;
-  period: BudgetPeriod;
-  startDate: string;
-  endDate: string;
-  createdAt: string;
-  updatedAt?: string;
-  imageUrl?: string;
-};
+export async function addIncome(userId: string, incomeData: IncomeFormData): Promise<string> {
+  if (!userId) throw new Error('User ID is required to add income.');
+  
+  const now = new Date();
+  const incomeDoc = {
+    userId,
+    source: incomeData.source,
+    amount: parseFloat(incomeData.amount),
+    currency: incomeData.currency,
+    date: Timestamp.fromDate(new Date(incomeData.date)),
+    notes: incomeData.notes || '',
+    createdAt: Timestamp.fromDate(now),
+    updatedAt: Timestamp.fromDate(now),
+    isRecurring: incomeData.isRecurring || false,
+    recurrence: incomeData.recurrence || 'none',
+    recurrenceEndDate: incomeData.recurrenceEndDate ? Timestamp.fromDate(new Date(incomeData.recurrenceEndDate)) : null,
+    lastInstanceCreated: incomeData.lastInstanceCreated ? Timestamp.fromDate(new Date(incomeData.lastInstanceCreated)) : null,
+  };
 
+  try {
+    const docRef = await addDoc(collection(db, INCOME_COLLECTION), incomeDoc);
+    return docRef.id;
+  } catch (error) {
+    console.error('[mobile] Error adding income:', error);
+    throw error;
+  }
+}
+
+export async function updateIncome(incomeId: string, incomeData: Partial<IncomeFormData>): Promise<void> {
+  if (!incomeId) throw new Error('Income ID is required to update income.');
+  
+  const incomeRef = doc(db, INCOME_COLLECTION, incomeId);
+  const updateData: any = {
+    updatedAt: Timestamp.now(),
+  };
+
+  if (incomeData.source !== undefined) updateData.source = incomeData.source;
+  if (incomeData.amount !== undefined) updateData.amount = parseFloat(incomeData.amount);
+  if (incomeData.currency !== undefined) updateData.currency = incomeData.currency;
+  if (incomeData.date !== undefined) updateData.date = Timestamp.fromDate(new Date(incomeData.date));
+  if (incomeData.notes !== undefined) updateData.notes = incomeData.notes;
+  if (incomeData.isRecurring !== undefined) updateData.isRecurring = incomeData.isRecurring;
+  if (incomeData.recurrence !== undefined) updateData.recurrence = incomeData.recurrence;
+  if (incomeData.recurrenceEndDate !== undefined) {
+    updateData.recurrenceEndDate = incomeData.recurrenceEndDate ? Timestamp.fromDate(new Date(incomeData.recurrenceEndDate)) : null;
+  }
+  if (incomeData.lastInstanceCreated !== undefined) {
+    updateData.lastInstanceCreated = incomeData.lastInstanceCreated ? Timestamp.fromDate(new Date(incomeData.lastInstanceCreated)) : null;
+  }
+
+  try {
+    await updateDoc(incomeRef, updateData);
+  } catch (error) {
+    console.error('[mobile] Error updating income:', error);
+    throw error;
+  }
+}
+
+export async function deleteIncome(incomeId: string): Promise<void> {
+  if (!incomeId) throw new Error('Income ID is required to delete income.');
+  
+  try {
+    const incomeRef = doc(db, INCOME_COLLECTION, incomeId);
+    await deleteDoc(incomeRef);
+  } catch (error) {
+    console.error('[mobile] Error deleting income:', error);
+    throw error;
+  }
+}
+ 
+ 
 export async function getBudgetsByUser(userId: string): Promise<Budget[]> {
   if (!userId) return [];
   const budgetsRef = collection(db, 'budgets');
@@ -1166,7 +1453,7 @@ export async function getBudgetsByUser(userId: string): Promise<Budget[]> {
     };
   });
 } 
-
+ 
 export async function addBudget(userId: string, budgetData: Partial<Budget>): Promise<string> {
   if (!userId) throw new Error('User ID is required to add a budget.');
   const now = new Date();
@@ -1178,18 +1465,18 @@ export async function addBudget(userId: string, budgetData: Partial<Budget>): Pr
   });
   return docRef.id;
 }
-
+ 
 export async function updateBudget(budgetId: string, budgetData: Partial<Budget>): Promise<void> {
   const budgetRef = doc(db, 'budgets', budgetId);
   const updatePayload: { [key: string]: any } = { ...budgetData, updatedAt: Timestamp.now() };
   await updateDoc(budgetRef, updatePayload);
 }
-
+ 
 export async function deleteBudget(budgetId: string): Promise<void> {
   const budgetRef = doc(db, 'budgets', budgetId);
   await deleteDoc(budgetRef);
 } 
-
+ 
 export async function getGlobalCategories(): Promise<{ id: string; name: string; icon: string }[]> {
   const categoriesRef = collection(db, 'global_categories');
   const q = query(categoriesRef);
@@ -1203,3 +1490,299 @@ export async function getGlobalCategories(): Promise<{ id: string; name: string;
     };
   });
 } 
+export async function getExpenseById(expenseId: string): Promise<Expense | null> {
+  try {
+    const docRef = doc(db, "expenses", expenseId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return mapExpenseDocumentToExpenseObject(docSnap);
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error("[firestore.getExpenseById] Error getting document by ID: ", error);
+    throw error;
+  }
+}
+ 
+export async function updateExpense(expenseId: string, expenseData: Partial<ExpenseFormData>): Promise<void> {
+  try {
+    const docRef = doc(db, "expenses", expenseId);
+    const updateData: { [key: string]: any } = { updatedAt: Timestamp.now() };
+ 
+    // Helper to create a Date at local midnight (not UTC midnight)
+    function localDateToLocalMidnight(dateStr: string) {
+      // dateStr is 'YYYY-MM-DD'
+      const [year, month, day] = dateStr.split('-').map(Number);
+      // This creates a Date at local midnight in the server's timezone
+      return new Date(year, month - 1, day, 0, 0, 0);
+    }
+ 
+    if (expenseData.description !== undefined) updateData.description = expenseData.description;
+    if (expenseData.amount !== undefined) updateData.amount = parseFloat(expenseData.amount);
+    if (expenseData.currency !== undefined) updateData.currency = expenseData.currency;
+    if (expenseData.category !== undefined) updateData.category = expenseData.category;
+    if (expenseData.date !== undefined) {
+      // Use local midnight, not UTC midnight
+      updateData.date = Timestamp.fromDate(localDateToLocalMidnight(expenseData.date));
+    }
+    if (expenseData.notes !== undefined) updateData.notes = expenseData.notes;
+ 
+    if (expenseData.receiptUrl === null) {
+      updateData.receiptUrl = null;
+    } else if (expenseData.receiptUrl !== undefined) {
+      updateData.receiptUrl = expenseData.receiptUrl;
+    }
+ 
+    if (expenseData.groupId && expenseData.groupId !== '___PERSONAL___') {
+      updateData.groupId = expenseData.groupId;
+      updateData.groupName = expenseData.groupName;
+    } else {
+      updateData.groupId = null;
+      updateData.groupName = null;
+    }
+ 
+    if (expenseData.isRecurring !== undefined) updateData.isRecurring = expenseData.isRecurring;
+    if (expenseData.recurrence !== undefined) updateData.recurrence = expenseData.recurrence;
+    if (expenseData.recurrenceEndDate !== undefined) {
+      updateData.recurrenceEndDate = expenseData.recurrenceEndDate
+        ? Timestamp.fromDate(localDateToLocalMidnight(expenseData.recurrenceEndDate))
+        : null;
+    }
+    if (expenseData.tags !== undefined) {
+      updateData.tags = expenseData.tags
+        ? expenseData.tags.split(',').map(tag => tag.trim()).filter(tag => tag !== '')
+        : [];
+    }
+ 
+    console.log("[firestore.updateExpense] Update data:", updateData);
+    if (Object.keys(updateData).length > 1) {
+      await updateDoc(docRef, updateData);
+    }
+  } catch (error) {
+    console.error("[firestore.updateExpense] Error updating document: ", error);
+    throw error;
+  }
+}
+function mapExpenseDocumentToExpenseObject(docSnap: any): Expense | null {
+  const docId = docSnap.id;
+  try {
+    const data = docSnap.data();
+    if (!data) {
+      console.error(`[firestore.mapExpense] Document ${docId} has no data.`);
+      return null;
+    }
+ 
+    if (!data.date || typeof data.date.toDate !== 'function') {
+      console.error(`[firestore.mapExpense] Document ${docId} has invalid or missing 'date' field:`, data.date);
+      return null;
+    }
+    if (!data.createdAt || typeof data.createdAt.toDate !== 'function') {
+      console.error(`[firestore.mapExpense] Document ${docId} has invalid or missing 'createdAt' field:`, data.createdAt);
+      return null;
+    }
+ 
+    return {
+      id: docId,
+      description: data.description || 'No description',
+      amount: typeof data.amount === 'number' ? data.amount : 0,
+      currency: data.currency || 'USD',
+      category: data.category || 'Other',
+      date: (data.date as Timestamp).toDate().toISOString().split('T')[0],
+      notes: data.notes || '',
+      receiptUrl: data.receiptUrl || undefined,
+      groupId: data.groupId || undefined,
+      groupName: data.groupName || undefined,
+      createdAt: (data.createdAt as Timestamp).toDate().toISOString(),
+      userId: data.userId || 'Unknown User',
+      paidById: data.paidById || data.userId || 'Unknown User', // Fallback for old docs
+      paidByName: data.paidByName || 'Unknown Payer', // Fallback for old docs
+      isRecurring: data.isRecurring || false,
+      recurrence: data.recurrence || 'none',
+      recurrenceEndDate: data.recurrenceEndDate && typeof data.recurrenceEndDate.toDate === 'function'
+                         ? (data.recurrenceEndDate as Timestamp).toDate().toISOString().split('T')[0]
+                         : undefined,
+      tags: Array.isArray(data.tags) ? data.tags : [],
+    };
+  } catch (error) {
+    console.error(`[firestore.mapExpense] Error mapping expense document ${docId}:`, error, docSnap.data());
+    return null;
+  }
+}
+ 
+ 
+// Group Management Functions
+export async function uploadGroupImage(groupId: string, imageUri: string): Promise<string> {
+  try {
+    if (!imageUri) throw new Error("No image URI provided.");
+ 
+    const response = await fetch(imageUri);
+    const blob = await response.blob();
+ 
+    const storageRef = ref(storage, `group-images/${groupId}`);
+    await uploadBytes(storageRef, blob);
+    const downloadURL = await getDownloadURL(storageRef);
+ 
+    return downloadURL;
+  } catch (error) {
+    console.error("[firestore.uploadGroupImage] Error uploading group image: ", error);
+    throw error;
+  }
+}
+ 
+export async function createGroup(
+  creatorProfile: UserProfile,
+  groupName: string,
+  initialMemberProfiles: UserProfile[],
+  imageUrl: string | null
+): Promise<string> {
+  try {
+    if (!groupName.trim()) throw new Error("Group name cannot be empty.");
+    if (!initialMemberProfiles.some(p => p.uid === creatorProfile.uid)) {
+      throw new Error("Creator must be part of the initial members.");
+    }
+ 
+    const memberIds = initialMemberProfiles.map(p => p.uid);
+    const memberDetails: GroupMemberDetail[] = initialMemberProfiles.map(p => ({
+      uid: p.uid,
+      email: p.email,
+      displayName: p.displayName || (p.email ? p.email.split('@')[0] : 'Unknown User'),
+      role: p.uid === creatorProfile.uid ? 'creator' : 'member',
+      profilePictureUrl: p.photoURL || null,
+    }));
+ 
+    const groupData = {
+      name: groupName,
+      createdBy: creatorProfile.uid,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      memberIds: memberIds,
+      memberDetails: memberDetails,
+      imageUrl: imageUrl === undefined ? null : imageUrl,
+    };
+ 
+    const groupRef = await addDoc(collection(db, GROUPS_COLLECTION), groupData);
+ 
+    await logGroupActivity(groupRef.id, {
+      actorId: creatorProfile.uid,
+      actorDisplayName: creatorProfile.displayName || creatorProfile.email || 'Unknown User',
+      actionType: ActivityActionType.GROUP_CREATED,
+      details: `created group "${groupName}"`,
+    });
+    for (const member of initialMemberProfiles) {
+      if (member.uid !== creatorProfile.uid) {
+         await logGroupActivity(groupRef.id, {
+            actorId: creatorProfile.uid,
+            actorDisplayName: creatorProfile.displayName || creatorProfile.email || 'Unknown User',
+            actionType: ActivityActionType.MEMBER_ADDED,
+            details: `added ${member.displayName || member.email || 'Unknown User'} to the group during creation`,
+            relatedMemberId: member.uid,
+            relatedMemberName: member.displayName || member.email || 'Unknown User',
+        });
+      }
+    }
+    return groupRef.id;
+  } catch (error) {
+    console.error("[firestore.createGroup] Error creating group: ", error);
+    throw error;
+  }
+}
+
+// Wallet Functions
+export async function addFundsToWallet(userId: string, amount: number, currency: CurrencyCode): Promise<void> {
+  try {
+    if (!userId) throw new Error("User ID is required.");
+    if (amount <= 0) throw new Error("Amount must be positive.");
+    if (!SUPPORTED_CURRENCIES.some(c => c.code === currency)) throw new Error("Unsupported currency.");
+
+    const userRef = doc(db, USERS_COLLECTION, userId);
+    // Use dot notation for nested field update
+    await updateDoc(userRef, {
+      [`wallet.${currency}`]: increment(amount),
+      updatedAt: Timestamp.now(),
+    });
+  } catch (error) {
+    console.error("[firestore.addFundsToWallet] Error adding funds: ", error);
+    throw error;
+  }
+}
+
+export async function withdrawFundsFromWallet(userId: string, amount: number, currency: CurrencyCode): Promise<void> {
+  try {
+    if (!userId) throw new Error("User ID is required.");
+    if (amount <= 0) throw new Error("Amount must be positive.");
+    if (!SUPPORTED_CURRENCIES.some(c => c.code === currency)) throw new Error("Unsupported currency.");
+
+    const userRef = doc(db, USERS_COLLECTION, userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      throw new Error("User profile not found.");
+    }
+    
+    const userData = userDoc.data();
+    const currentBalance = userData.wallet?.[currency] || 0;
+    
+    if (currentBalance < amount) {
+      throw new Error(`Insufficient funds. You have ${currentBalance} ${currency}, but trying to withdraw ${amount} ${currency}.`);
+    }
+
+    await updateDoc(userRef, {
+      [`wallet.${currency}`]: increment(-amount),
+      updatedAt: Timestamp.now(),
+    });
+  } catch (error) {
+    console.error("[firestore.withdrawFundsFromWallet] Error withdrawing funds: ", error);
+    throw error;
+  }
+}
+
+export async function transferFundsBetweenUsers(
+  fromUserId: string,
+  toUserId: string,
+  amount: number,
+  currency: CurrencyCode
+): Promise<void> {
+  try {
+    if (!fromUserId || !toUserId) throw new Error("Both user IDs are required.");
+    if (amount <= 0) throw new Error("Amount must be positive.");
+    if (!SUPPORTED_CURRENCIES.some(c => c.code === currency)) throw new Error("Unsupported currency.");
+
+    await runTransaction(db, async (transaction) => {
+      const fromUserRef = doc(db, USERS_COLLECTION, fromUserId);
+      const toUserRef = doc(db, USERS_COLLECTION, toUserId);
+      
+      const fromUserDoc = await transaction.get(fromUserRef);
+      const toUserDoc = await transaction.get(toUserRef);
+      
+      if (!fromUserDoc.exists()) {
+        throw new Error("Sender's profile not found.");
+      }
+      if (!toUserDoc.exists()) {
+        throw new Error("Recipient's profile not found.");
+      }
+      
+      const fromUserData = fromUserDoc.data();
+      const currentBalance = fromUserData.wallet?.[currency] || 0;
+      
+      if (currentBalance < amount) {
+        throw new Error(`Insufficient funds. You have ${currentBalance} ${currency}, but trying to transfer ${amount} ${currency}.`);
+      }
+
+      // Deduct from sender
+      transaction.update(fromUserRef, {
+        [`wallet.${currency}`]: increment(-amount),
+        updatedAt: Timestamp.now(),
+      });
+
+      // Add to recipient
+      transaction.update(toUserRef, {
+        [`wallet.${currency}`]: increment(amount),
+        updatedAt: Timestamp.now(),
+      });
+    });
+  } catch (error) {
+    console.error("[firestore.transferFundsBetweenUsers] Error transferring funds: ", error);
+    throw error;
+  }
+}

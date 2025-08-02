@@ -1,10 +1,14 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Inbox, UserPlus } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Avatar, Button, Card, Dialog, IconButton, Portal, Snackbar, Surface, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Avatar, Dialog, IconButton, Portal, Snackbar, Surface, Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { acceptFriendRequest, getFriends, getIncomingFriendRequests, getSplitExpensesForUser, getUserProfile, rejectFriendRequest, sendFriendRequest } from '../../firebase/firestore';
+import { FriendCard } from '../../components/FriendCard'; // Import the new component
+import { ModernButton } from '../../components/ui/ModernButton';
+import { ModernInput } from '../../components/ui/ModernInput';
+import { acceptFriendRequest, getFriends, getIncomingFriendRequests, getSplitExpensesForUser, getUserProfile, rejectFriendRequest, removeFriend, sendFriendRequest } from '../../firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
 
 export default function FriendsScreen() {
@@ -20,6 +24,9 @@ export default function FriendsScreen() {
   const [inviteType, setInviteType] = useState<'email' | 'phone'>('email');
   const [identifier, setIdentifier] = useState('');
   const [snackbar, setSnackbar] = useState<{ visible: boolean; message: string; error?: boolean }>({ visible: false, message: '' });
+  const [showRemoveFriendDialog, setShowRemoveFriendDialog] = useState(false);
+  const [friendToRemove, setFriendToRemove] = useState<any>(null);
+  const [isRemovingFriend, setIsRemovingFriend] = useState(false);
   const { colors, dark } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -141,288 +148,335 @@ export default function FriendsScreen() {
     }
   };
 
-  // UI styles
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
+  const handleRemoveFriend = async () => {
+    if (!authUser || !friendToRemove) return;
+    setIsRemovingFriend(true);
+    try {
+      await removeFriend(authUser.uid, friendToRemove.uid);
+      setSnackbar({ visible: true, message: `${friendToRemove.displayName || friendToRemove.email} has been removed from your friends.` });
+      fetchInitialData(); // Refresh the list
+    } catch (error: any) {
+      setSnackbar({ visible: true, message: error.message || 'Could not remove friend.', error: true });
+    } finally {
+      setIsRemovingFriend(false);
+      setShowRemoveFriendDialog(false);
+      setFriendToRemove(null);
+    }
+  };
+ 
+   // UI styles
+   const styles = StyleSheet.create({
+     container: {
+       flex: 1,
+       backgroundColor: colors.background,
+       paddingTop: insets.top,
+     },
     header: {
-      marginTop: 24,
-      marginBottom: 8,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
       paddingHorizontal: 20,
+      paddingTop: 24,
+      paddingBottom: 16,
+    },
+    headerContent: {
+      flex: 1,
     },
     title: {
       fontWeight: 'bold',
-      fontSize: 28,
-      color: colors.onBackground,
+      fontSize: 30,
+      color: colors.primary,
       marginBottom: 2,
+      letterSpacing: -0.5,
     },
     subtitle: {
       color: colors.onSurfaceVariant,
-      fontSize: 15,
-      marginBottom: 18,
-    },
-    addBtn: {
-      borderRadius: 8,
-      backgroundColor: colors.primary,
-      marginBottom: 24,
-      alignSelf: 'flex-start',
-      paddingHorizontal: 18,
-      paddingVertical: 8,
-    },
-    addBtnLabel: {
-      fontWeight: 'bold',
       fontSize: 16,
-      color: colors.onPrimary,
-    },
-    card: {
-      borderRadius: 16,
       marginBottom: 18,
-      backgroundColor: dark ? colors.elevation.level2 : '#fafbfc',
-      shadowColor: '#000',
-      shadowOpacity: 0.08,
-      shadowRadius: 12,
-      elevation: 4,
-      borderWidth: 1,
-      borderColor: dark ? colors.outline : '#f0f0f0',
-      padding: 0,
     },
     cardTitle: {
       fontWeight: 'bold',
-      fontSize: 20,
-      color: colors.onBackground,
+      fontSize: 21,
+      color: colors.primary,
       marginBottom: 2,
-      marginTop: 10,
-      marginLeft: 18,
+      marginTop: 16,
+      marginLeft: 22,
+      letterSpacing: -0.2,
     },
     cardSubtitle: {
       color: colors.onSurfaceVariant,
-      fontSize: 14,
+      fontSize: 15,
       marginBottom: 10,
-      marginLeft: 18,
+      marginLeft: 22,
     },
     emptyState: {
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 32,
+      paddingVertical: 40,
+      paddingHorizontal: 20,
     },
-    friendCard: {
-      borderRadius: 14,
-      backgroundColor: dark ? colors.elevation.level1 : '#fff',
-      borderWidth: 1,
-      borderColor: dark ? colors.outline : '#e5e7eb',
-      marginHorizontal: 14,
-      marginBottom: 14,
-      padding: 18,
+    requestCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      shadowColor: '#000',
-      shadowOpacity: 0.04,
-      shadowRadius: 6,
+      marginHorizontal: 18,
+      marginBottom: 12,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: dark ? colors.elevation.level1 : colors.surface,
+      borderWidth: 1,
+      borderColor: dark ? colors.outline : '#e0e0e0',
+    },
+    requestInfo: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    requestButtons: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    dialog: {
+      borderRadius: 24,
+      overflow: 'hidden',
+      backgroundColor: colors.surface,
+    },
+    dialogContent: {
+      paddingTop: 24,
+      paddingBottom: 12,
+      paddingHorizontal: 24,
+    },
+    pillSwitcher: {
+      flexDirection: 'row',
+      alignSelf: 'center',
+      marginBottom: 20,
+      backgroundColor: dark ? colors.elevation.level1 : '#f3f4f6',
+      borderRadius: 24,
+      padding: 4,
+    },
+    pillBtn: {
+      borderRadius: 20,
+      minWidth: 110,
+      marginHorizontal: 2,
+      height: 40,
+      justifyContent: 'center',
+    },
+    pillLabel: {
+      fontWeight: 'bold',
+      fontSize: 16,
+    },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    input: {
+      flex: 1,
+      fontSize: 17,
+      borderRadius: 12,
+      backgroundColor: colors.background,
+    },
+    dialogActions: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      paddingHorizontal: 24,
+      paddingBottom: 24,
+    },
+    sendBtn: {
+      borderRadius: 12,
+      marginBottom: 10,
+      height: 48,
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
       elevation: 2,
     },
-    friendInfo: {
-      flex: 1,
-      marginLeft: 16,
-    },
-    friendName: {
+    sendLabel: {
       fontWeight: 'bold',
       fontSize: 17,
-      color: colors.onBackground,
+      color: colors.onPrimary,
     },
-    friendEmail: {
+    cancelBtn: {
+      borderRadius: 12,
+      height: 44,
+      justifyContent: 'center',
+    },
+    cancelLabel: {
+      fontWeight: 'bold',
+      fontSize: 16,
       color: colors.onSurfaceVariant,
-      fontSize: 14,
-      marginBottom: 2,
-    },
-    balanceRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: 4,
-    },
-    balancePositive: {
-      color: '#1db954',
-      fontWeight: 'bold',
-      fontSize: 15,
-    },
-    balanceNegative: {
-      color: colors.error,
-      fontWeight: 'bold',
-      fontSize: 15,
-    },
-    balanceIcon: {
-      marginRight: 4,
     },
   });
 
   return (
-    <Surface style={[styles.container, { paddingTop: insets.top }] }>
+    <Surface style={styles.container}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Friends</Text>
-          <Text style={styles.subtitle}>Manage your connections for easy expense splitting and sharing.</Text>
-          <Button
-            mode="contained"
-            icon={UserPlus}
-            style={styles.addBtn}
-            labelStyle={styles.addBtnLabel}
+          <View style={styles.headerContent}>
+            <Text style={styles.title}>Friends</Text>
+            <Text style={styles.subtitle}>Manage your connections for easy expense splitting and sharing.</Text>
+          </View>
+          <IconButton
+            icon={() => <UserPlus size={24} color={colors.primary} />}
             onPress={() => setShowAddFriend(true)}
-          >
-            Add New Friend
-          </Button>
+            size={24}
+            containerColor={colors.surfaceVariant}
+            mode="contained"
+            style={{ borderRadius: 12, width: 48, height: 48, marginLeft: 12 }}
+          />
         </View>
         {/* Incoming Friend Requests */}
-        <Card style={styles.card}>
+        <View style={{ paddingHorizontal: 22, paddingTop: 16, paddingBottom: 10 }}>
           <Text style={styles.cardTitle}>Incoming Friend Requests</Text>
           <Text style={styles.cardSubtitle}>Respond to users who want to connect with you.</Text>
-          {isLoadingRequests ? (
-            <ActivityIndicator style={{ marginVertical: 24 }} />
-          ) : incomingRequests.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Inbox size={48} color={colors.onSurfaceVariant} style={{ marginBottom: 10 }} />
-              <Text style={{ color: colors.onSurfaceVariant, fontSize: 16, fontWeight: '600', marginBottom: 2 }}>No incoming friend requests.</Text>
-              <Text style={{ color: colors.onSurfaceVariant, fontSize: 14, textAlign: 'center' }}>
-                When someone sends you a request, it will appear here.
-              </Text>
-            </View>
-          ) : (
-            incomingRequests.map((request: any) => (
-              <View key={request.id} style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 18, marginBottom: 12 }}>
-                <Avatar.Text size={44} label={request.fromUserDisplayName ? request.fromUserDisplayName[0] : '?'} style={{ backgroundColor: colors.primary, marginRight: 14 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: 'bold', fontSize: 16, color: colors.onBackground }}>{request.fromUserDisplayName || request.fromUserEmail}</Text>
-                  <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>{request.fromUserEmail}</Text>
-                </View>
-                <Button
-                  mode="contained"
-                  style={{ marginRight: 8, borderRadius: 8 }}
-                  loading={isProcessingRequest === request.id}
-                  onPress={() => handleAcceptRequest(request)}
-                >
-                  Accept
-                </Button>
-                <Button
-                  mode="outlined"
-                  style={{ borderRadius: 8 }}
-                  loading={isProcessingRequest === request.id}
-                  onPress={() => handleRejectRequest(request.id)}
-                  textColor={colors.error}
-                >
-                  Reject
-                </Button>
+        </View>
+        {isLoadingRequests ? (
+          <ActivityIndicator style={{ marginVertical: 24 }} />
+        ) : incomingRequests.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Inbox size={48} color={colors.onSurfaceVariant} style={{ marginBottom: 16 }} />
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 17, fontWeight: '600', marginBottom: 4, textAlign: 'center' }}>No incoming friend requests.</Text>
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+              When someone sends you a request, it will appear here.
+            </Text>
+          </View>
+        ) : (
+          incomingRequests.map((request: any) => (
+            <View key={request.id} style={styles.requestCard}>
+              <Avatar.Text size={44} label={request.fromUserDisplayName ? request.fromUserDisplayName[0] : '?'} />
+              <View style={styles.requestInfo}>
+                <Text style={{ fontWeight: 'bold', fontSize: 16, color: colors.onBackground }}>{request.fromUserDisplayName || request.fromUserEmail}</Text>
+                <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>{request.fromUserEmail}</Text>
               </View>
-            ))
-          )}
-        </Card>
+              <View style={styles.requestButtons}>
+                <ModernButton
+                  title="Accept"
+                  onPress={() => handleAcceptRequest(request)}
+                  loading={isProcessingRequest === request.id}
+                  style={{ height: 38, paddingHorizontal: 12 }}
+                  textStyle={{ fontWeight: 'bold' }}
+                />
+                <ModernButton
+                  title="Reject"
+                  onPress={() => handleRejectRequest(request.id)}
+                  loading={isProcessingRequest === request.id}
+                  variant="outline"
+                  style={{ height: 38, paddingHorizontal: 12, borderColor: colors.error }}
+                  textStyle={{ fontWeight: 'bold', color: colors.error }}
+                />
+              </View>
+            </View>
+          ))
+        )}
         {/* Your Friends */}
-        <Card style={styles.card}>
+        <View style={{ paddingHorizontal: 22, paddingTop: 16, paddingBottom: 10 }}>
           <Text style={styles.cardTitle}>Your Friends</Text>
           <Text style={styles.cardSubtitle}>List of your current connections.</Text>
-          {isLoadingFriends ? (
-            <ActivityIndicator style={{ marginVertical: 24 }} />
-          ) : friends.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={{ color: colors.onSurfaceVariant, fontSize: 16, fontWeight: '600', marginBottom: 2 }}>No friends found.</Text>
-              <Text style={{ color: colors.onSurfaceVariant, fontSize: 14, textAlign: 'center' }}>
-                When you add friends, they will appear here.
-              </Text>
-            </View>
-          ) : (
-            friends.map((friend: any) => (
-              <Button
-                key={friend.uid}
-                style={styles.friendCard}
-                mode="text"
-                onPress={() => router.push({ pathname: '/friend-detail', params: { friendId: friend.uid } })}
-                contentStyle={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}
-              >
-                <Avatar.Text size={48} label={friend.displayName ? friend.displayName[0] : '?'} style={{ backgroundColor: colors.primary }} />
-                <View style={styles.friendInfo}>
-                  <Text style={styles.friendName}>{friend.displayName || friend.email}</Text>
-                  <Text style={styles.friendEmail}>{friend.email}</Text>
-                  <View style={styles.balanceRow}>
-                    {friendBalances[friend.uid] && Object.entries(friendBalances[friend.uid]).map(([currency, amount]) => (
-                      <Text
-                        key={currency}
-                        style={amount >= 0 ? styles.balancePositive : styles.balanceNegative}
-                      >
-                        {amount >= 0 ? '↗ Owes you ' : '↘ You owe '}
-                        {currency} {Math.abs(amount).toFixed(2)}
-                      </Text>
-                    ))}
-                  </View>
-                </View>
-                <IconButton icon="chevron-right" size={28} />
-              </Button>
-            ))
-          )}
-        </Card>
+        </View>
+        {isLoadingFriends ? (
+          <ActivityIndicator style={{ marginVertical: 24 }} />
+        ) : friends.length === 0 ? (
+          <View style={styles.emptyState}>
+            <MaterialCommunityIcons name="account-group-outline" size={48} color={colors.onSurfaceVariant} style={{ marginBottom: 16 }} />
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 17, fontWeight: '600', marginBottom: 4, textAlign: 'center' }}>No friends found.</Text>
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 15, textAlign: 'center', lineHeight: 22 }}>
+              When you add friends, they will appear here.
+            </Text>
+          </View>
+        ) : (
+          friends.map((friend: any) => (
+            <FriendCard
+              key={friend.uid}
+              friend={friend}
+              friendBalances={friendBalances}
+              onRemoveFriend={(f: any) => {
+                setFriendToRemove(f);
+                setShowRemoveFriendDialog(true);
+              }}
+            />
+          ))
+        )}
         {/* Add Friend Dialog */}
         <Portal>
-          <Dialog visible={showAddFriend} onDismiss={() => setShowAddFriend(false)} style={{ borderRadius: 20, overflow: 'hidden' }}>
-            <Dialog.Content style={{ paddingTop: 28, paddingBottom: 16 }}>
-              <Text style={{ fontWeight: 'bold', fontSize: 22, textAlign: 'center', marginBottom: 4, color: colors.onBackground }}>Add New Friend</Text>
+          <Dialog visible={showAddFriend} onDismiss={() => setShowAddFriend(false)} style={styles.dialog}>
+            <Dialog.Content style={styles.dialogContent}>
+              <Text style={{ fontWeight: 'bold', fontSize: 22, textAlign: 'center', marginBottom: 4, color: colors.primary }}>Add New Friend</Text>
               <Text style={{ color: colors.onSurfaceVariant, fontSize: 15, textAlign: 'center', marginBottom: 18 }}>Invite by email or phone to start splitting expenses.</Text>
               {/* Pill-style tab switcher */}
-              <View style={{ flexDirection: 'row', alignSelf: 'center', marginBottom: 18, backgroundColor: dark ? colors.elevation.level1 : '#f3f4f6', borderRadius: 24, padding: 4 }}>
-                <Button
-                  mode={inviteType === 'email' ? 'contained' : 'text'}
+              <View style={styles.pillSwitcher}>
+                <ModernButton
+                  title="By Email"
                   onPress={() => setInviteType('email')}
-                  style={{ borderRadius: 20, marginRight: 4, backgroundColor: inviteType === 'email' ? colors.primary : 'transparent', minWidth: 100 }}
-                  labelStyle={{ color: inviteType === 'email' ? colors.onPrimary : colors.onSurfaceVariant, fontWeight: 'bold' }}
-                >
-                  By Email
-                </Button>
-                <Button
-                  mode={inviteType === 'phone' ? 'contained' : 'text'}
+                  variant={inviteType === 'email' ? 'primary' : 'ghost'}
+                  style={{ ...styles.pillBtn, backgroundColor: inviteType === 'email' ? colors.primary : 'transparent' }}
+                  textStyle={{ ...styles.pillLabel, color: inviteType === 'email' ? colors.onPrimary : colors.onSurfaceVariant }}
+                />
+                <ModernButton
+                  title="By Phone"
                   onPress={() => setInviteType('phone')}
-                  style={{ borderRadius: 20, marginLeft: 4, backgroundColor: inviteType === 'phone' ? colors.primary : 'transparent', minWidth: 100 }}
-                  labelStyle={{ color: inviteType === 'phone' ? colors.onPrimary : colors.onSurfaceVariant, fontWeight: 'bold' }}
-                >
-                  By Phone
-                </Button>
+                  variant={inviteType === 'phone' ? 'primary' : 'ghost'}
+                  style={{ ...styles.pillBtn, backgroundColor: inviteType === 'phone' ? colors.primary : 'transparent' }}
+                  textStyle={{ ...styles.pillLabel, color: inviteType === 'phone' ? colors.onPrimary : colors.onSurfaceVariant }}
+                />
               </View>
               {/* Input with icon */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <View style={styles.inputRow}>
                 <Avatar.Icon icon={inviteType === 'email' ? 'email' : 'phone'} size={36} style={{ backgroundColor: colors.elevation.level1, marginRight: 10 }} />
-                <TextInput
+                <ModernInput
                   label={inviteType === 'email' ? 'Email Address' : 'Phone Number'}
                   placeholder={inviteType === 'email' ? 'Enter email address' : 'Enter phone number'}
                   value={identifier}
                   onChangeText={setIdentifier}
                   keyboardType={inviteType === 'phone' ? 'phone-pad' : 'email-address'}
-                  style={{ flex: 1, fontSize: 17, borderRadius: 10, backgroundColor: colors.background }}
-                  mode="outlined"
+                  style={styles.input}
                   autoFocus
-                  left={<TextInput.Icon icon={inviteType === 'email' ? 'email' : 'phone'} />} 
+                  leftIcon={<MaterialCommunityIcons name={inviteType === 'email' ? 'email' : 'phone'} size={20} color={colors.onSurfaceVariant} />}
                 />
               </View>
             </Dialog.Content>
-            <Dialog.Actions style={{ flexDirection: 'column', alignItems: 'stretch', paddingHorizontal: 24, paddingBottom: 24 }}>
-              <Button
-                mode="contained"
+            <Dialog.Actions style={styles.dialogActions}>
+              <ModernButton
+                title="Send Friend Request"
                 onPress={handleSendFriendRequest}
                 loading={isSendingRequest}
-                style={{ borderRadius: 10, marginBottom: 10, height: 48, justifyContent: 'center', backgroundColor: colors.primary }}
-                labelStyle={{ fontWeight: 'bold', fontSize: 17, color: colors.onPrimary }}
-                contentStyle={{ height: 48 }}
-              >
-                Send Friend Request
-              </Button>
-              <Button
-                mode="text"
+                style={styles.sendBtn}
+                textStyle={styles.sendLabel}
+              />
+              <ModernButton
+                title="Cancel"
                 onPress={() => setShowAddFriend(false)}
-                style={{ borderRadius: 10, height: 44, justifyContent: 'center' }}
-                labelStyle={{ fontWeight: 'bold', fontSize: 16, color: colors.onSurfaceVariant }}
-                contentStyle={{ height: 44 }}
-              >
-                Cancel
-              </Button>
+                variant="ghost"
+                style={styles.cancelBtn}
+                textStyle={styles.cancelLabel}
+              />
+            </Dialog.Actions>
+          </Dialog>
+
+          {/* Remove Friend Confirmation Dialog */}
+          <Dialog visible={showRemoveFriendDialog} onDismiss={() => setShowRemoveFriendDialog(false)} style={styles.dialog}>
+            <Dialog.Title style={{ fontWeight: 'bold', fontSize: 20, textAlign: 'center', color: colors.error }}>Remove Friend</Dialog.Title>
+            <Dialog.Content style={styles.dialogContent}>
+              <Text style={{ fontSize: 16, textAlign: 'center', color: colors.onSurfaceVariant }}>
+                Are you sure you want to remove {friendToRemove?.displayName || friendToRemove?.email} from your friends? This action cannot be undone.
+              </Text>
+            </Dialog.Content>
+            <Dialog.Actions style={styles.dialogActions}>
+              <ModernButton
+                title="Remove Friend"
+                onPress={handleRemoveFriend}
+                loading={isRemovingFriend}
+                style={{ ...styles.sendBtn, backgroundColor: colors.error }}
+                textStyle={styles.sendLabel}
+              />
+              <ModernButton
+                title="Cancel"
+                onPress={() => setShowRemoveFriendDialog(false)}
+                variant="ghost"
+                style={styles.cancelBtn}
+                textStyle={styles.cancelLabel}
+              />
             </Dialog.Actions>
           </Dialog>
         </Portal>
@@ -437,4 +491,4 @@ export default function FriendsScreen() {
       </ScrollView>
     </Surface>
   );
-} 
+}

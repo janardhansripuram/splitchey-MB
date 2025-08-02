@@ -14,6 +14,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+
+
   const [recentExpenses, setRecentExpenses] = useState<any[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [splits, setSplits] = useState<any[]>([]);
@@ -184,10 +186,21 @@ export default function DashboardScreen() {
 
   return (
     <Surface style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar backgroundColor={colors.primary} style="light" translucent />
-      {/* Header: Net Balance */}
-      <View style={{ paddingTop: insets.top + 20, paddingBottom: 20, paddingHorizontal: 20, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, backgroundColor: colors.primary, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, elevation: 4 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+      <StatusBar style="light" translucent />
+      {/* Header: Net Balance - Extended to cover status bar */}
+      <View style={{ 
+        paddingTop: insets.top, 
+        paddingBottom: 20, 
+        paddingHorizontal: 20, 
+        borderBottomLeftRadius: 32, 
+        borderBottomRightRadius: 32, 
+        backgroundColor: colors.primary, 
+        shadowColor: '#000', 
+        shadowOpacity: 0.08, 
+        shadowRadius: 8, 
+        elevation: 4 
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, marginTop: 20 }}>
           <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 22 }}>Dashboard</Text>
           <Avatar.Text size={40} label={getInitials(userProfile?.displayName, userProfile?.email)} style={{ backgroundColor: colors.elevation.level2 }} />
         </View>
@@ -296,30 +309,67 @@ export default function DashboardScreen() {
 
         {/* Smart Features */}
         <Text style={{ fontWeight: 'bold', fontSize: 18, marginVertical: 8, color: colors.onSurface }}>Smart Features</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={{ marginBottom: 16 }}
+          contentContainerStyle={{ paddingRight: 16 }}
+        >
           <TouchableOpacity 
             style={[styles.featureCard, { backgroundColor: colors.elevation.level1 }]} 
-            onPress={() => router.push('/ai-insights')}
+            onPress={() => router.push('/income')}
           >
             <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-              <MaterialCommunityIcons name="brain" size={28} color="#fff" />
+              <MaterialCommunityIcons name="trending-up" size={28} color="#fff" />
             </View>
-            <Text style={{ fontWeight: 'bold', fontSize: 15, color: colors.onSurface, textAlign: 'center' }}>AI Insights</Text>
-            <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, textAlign: 'center' }}>Smart analysis of your finances</Text>
+            <Text style={{ fontWeight: 'bold', fontSize: 15, color: colors.onSurface, textAlign: 'center' }}>Income</Text>
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, textAlign: 'center' }}>Track your income sources</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.featureCard, { backgroundColor: colors.elevation.level1 }]} 
+            onPress={() => router.push('/wallet')}
+          >
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+              <MaterialCommunityIcons name="wallet" size={28} color="#fff" />
+            </View>
+            <Text style={{ fontWeight: 'bold', fontSize: 15, color: colors.onSurface, textAlign: 'center' }}>Wallet</Text>
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, textAlign: 'center' }}>Manage your digital wallet</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.featureCard, { backgroundColor: colors.elevation.level1 }]} 
             onPress={() => router.push('/budgets')}
           >
             <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-              <MaterialCommunityIcons name="wallet-outline" size={28} color="#fff" />
+              <MaterialCommunityIcons name="chart-line" size={28} color="#fff" />
             </View>
             <Text style={{ fontWeight: 'bold', fontSize: 15, color: colors.onSurface, textAlign: 'center' }}>Budgets</Text>
             <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, textAlign: 'center' }}>Track and manage budgets</Text>
           </TouchableOpacity>
-          {/* Add more smart features here */}
+          <TouchableOpacity 
+            style={[styles.featureCard, { backgroundColor: colors.elevation.level1 }]} 
+            onPress={() => router.push('/debts')}
+          >
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+              <MaterialCommunityIcons name="account-cash" size={28} color="#fff" />
+            </View>
+            <Text style={{ fontWeight: 'bold', fontSize: 15, color: colors.onSurface, textAlign: 'center' }}>Debts</Text>
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, textAlign: 'center' }}>Track who owes whom</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.featureCard, { backgroundColor: colors.elevation.level1 }]} 
+            onPress={() => router.push('/ai-insights')}
+          >
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+              <MaterialCommunityIcons name="lightbulb-on" size={28} color="#fff" />
+            </View>
+            <Text style={{ fontWeight: 'bold', fontSize: 15, color: colors.onSurface, textAlign: 'center' }}>AI Insights</Text>
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, textAlign: 'center' }}>Smart analysis of your finances</Text>
+          </TouchableOpacity>
         </ScrollView>
       </ScrollView>
+      
+
+      
       <Snackbar
         visible={snackbar.visible}
         onDismiss={() => setSnackbar({ visible: false, message: '' })}
@@ -375,7 +425,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   featureCard: {
-    width: 160,
+    width: 140,
     borderRadius: 16,
     padding: 16,
     marginRight: 12,
