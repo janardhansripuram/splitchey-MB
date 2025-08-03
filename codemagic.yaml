@@ -15,7 +15,6 @@ workflows:
         APP_STORE_CONNECT_API_KEY: $CM_APP_STORE_CONNECT_API_KEY
         FIREBASE_SERVICE_ACCOUNT: $CM_FIREBASE_SERVICE_ACCOUNT
       node: latest
-      flutter: stable
     scripts:
       - name: Set up code signing settings
         script: |
@@ -50,7 +49,7 @@ workflows:
           npx expo install
       - name: Build iOS app
         script: |
-          # Build for iOS
+          # Build for iOS using Expo
           npx expo build:ios --non-interactive
           
           # Archive the app
@@ -68,7 +67,6 @@ workflows:
     artifacts:
       - build/ios/*.ipa
       - /tmp/xcodebuild_logs/*.log
-      - flutter_drive.log
     publishing:
       app_store_connect:
         api_key: $APP_STORE_CONNECT_API_KEY
@@ -80,9 +78,6 @@ workflows:
           - your-email@splitchey.com
       slack:
         channel: "#builds"
-        notify_on_build_start: true
-        notify_on_build_success: true
-        notify_on_build_fail: true
 
   android-workflow:
     name: Android Workflow
@@ -93,7 +88,6 @@ workflows:
         PACKAGE_NAME: "com.splitchey.app"
         FIREBASE_SERVICE_ACCOUNT: $CM_FIREBASE_SERVICE_ACCOUNT
       node: latest
-      flutter: stable
     scripts:
       - name: Set up Android signing
         script: |
@@ -108,17 +102,16 @@ workflows:
           npx expo install
       - name: Build Android app
         script: |
-          # Build for Android
+          # Build for Android using Expo
           npx expo build:android --non-interactive
           
-          # Build APK
+          # Build APK using Gradle
           cd android
           ./gradlew assembleRelease
           cd ..
     artifacts:
-      - build/app/outputs/**/flutter-apk/**/*.apk
-      - build/app/outputs/**/mapping.txt
-      - flutter_drive.log
+      - android/app/build/outputs/**/apk/**/*.apk
+      - android/app/build/outputs/**/mapping.txt
     publishing:
       google_play:
         track: internal
@@ -128,9 +121,6 @@ workflows:
           - your-email@splitchey.com
       slack:
         channel: "#builds"
-        notify_on_build_start: true
-        notify_on_build_success: true
-        notify_on_build_fail: true
 
   web-workflow:
     name: Web Workflow
@@ -145,7 +135,7 @@ workflows:
           npx expo install
       - name: Build web app
         script: |
-          # Build for web
+          # Build for web using Expo
           npx expo build:web
           
           # Create production build
@@ -161,7 +151,4 @@ workflows:
         recipients:
           - your-email@splitchey.com
       slack:
-        channel: "#builds"
-        notify_on_build_start: true
-        notify_on_build_success: true
-        notify_on_build_fail: true 
+        channel: "#builds" 

@@ -21,6 +21,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Install Expo CLI
+        run: npm install -g @expo/cli
+      
       - name: Run linting
         run: npm run lint
       
@@ -43,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Install Expo CLI
+        run: npm install -g @expo/cli
+      
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -54,13 +60,42 @@ jobs:
       
       - name: Build Android APK
         run: |
-          npm run build:android
+          npx expo build:android --non-interactive
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: splitchey-android
-          path: build/app/outputs/**/*.apk
+          path: android/app/build/outputs/**/*.apk
+
+  build-ios:
+    needs: test
+    runs-on: macos-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Expo CLI
+        run: npm install -g @expo/cli
+      
+      - name: Build iOS app
+        run: |
+          npx expo build:ios --non-interactive
+      
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: splitchey-ios
+          path: build/ios/*.ipa
 
   build-web:
     needs: test
@@ -78,8 +113,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Install Expo CLI
+        run: npm install -g @expo/cli
+      
       - name: Build web app
-        run: npm run build:web
+        run: |
+          npx expo build:web
+          npx expo export:web
       
       - name: Upload web build
         uses: actions/upload-artifact@v4
@@ -106,4 +146,26 @@ jobs:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
           projectId: splitchey-app
-          channelId: live 
+          channelId: live
+
+  deploy-android:
+    needs: build-android
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: splitchey-android
+          path: android-builds/
+      
+      - name: Upload to Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          groups: testers
+          file: android-builds/*.apk
+          releaseNotes: "Automated build from GitHub Actions" 

@@ -105,7 +105,7 @@ CM_FIREBASE_APP_ID=your_firebase_app_id
 2. **Upload to Codemagic:**
    - Go to your project settings
    - Navigate to "Code signing"
-   - Upload your keystore file
+   - Upload your keystore file with reference name: `keystore_reference`
 
 ### Step 5: Publishing Configuration
 
