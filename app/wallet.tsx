@@ -11,8 +11,7 @@ import { ModernCard } from '../components/ui/ModernCard';
 import { addFundsToWallet, getUserProfile } from '../firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { CurrencySelectionModal } from '../components/CurrencySelectionModal';
-import { SUPPORTED_CURRENCIES } from '../constants/types';
-import { CurrencyCode } from '../constants/types';
+import { SUPPORTED_CURRENCIES , CurrencyCode } from '../constants/types';
 
 const BOTTOM_SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.68);
 

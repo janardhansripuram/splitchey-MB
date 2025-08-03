@@ -167,15 +167,15 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (!loading) {
       // Print raw splits, friends, and computed debts
-      // eslint-disable-next-line no-console
+       
       console.log('DASHBOARD DEBUG: splits', splits);
-      // eslint-disable-next-line no-console
+       
       console.log('DASHBOARD DEBUG: friends', friends);
-      // eslint-disable-next-line no-console
+       
       console.log('DASHBOARD DEBUG: friendBalances', friendBalances);
-      // eslint-disable-next-line no-console
+       
       console.log('DASHBOARD DEBUG: groupBalances', groupBalances);
-      // eslint-disable-next-line no-console
+       
       console.log('DASHBOARD DEBUG: allBalances', allBalances);
     }
   }, [loading, splits, friends, friendBalances, groupBalances, allBalances]);

@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "converted-expenseflow",
-    "slug": "converted-expenseflow",
+    "name": "SplitChey",
+    "slug": "splitchey",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "convertedexpenseflow",
+    "scheme": "splitchey",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

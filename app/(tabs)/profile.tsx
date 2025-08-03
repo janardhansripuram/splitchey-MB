@@ -11,6 +11,8 @@ import { Dimensions, KeyboardAvoidingView, Linking, Platform, RefreshControl, Sc
 import { ActivityIndicator, Avatar, Dialog, Divider, List, Modal, Portal, Snackbar, Surface, Switch, Text, useTheme } from 'react-native-paper';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ModernButton } from '../../components/ui/ModernButton';
 import { ModernCard } from '../../components/ui/ModernCard';
 import { ModernInput } from '../../components/ui/ModernInput';
@@ -38,6 +40,7 @@ export default function ProfileScreen() {
   const { authUser, userProfile, loading, refetchUserProfile } = useAuth();
   const { colors, dark } = useTheme();
   const { theme, setTheme } = useThemeMode();
+  const router = useRouter();
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [displayName, setDisplayName] = useState(userProfile?.displayName || '');
   const [currency, setCurrency] = useState(userProfile?.defaultCurrency || 'USD');
@@ -71,18 +74,24 @@ export default function ProfileScreen() {
 
   // Use BottomSheetModal with proper context
   const bottomSheetModalRef = useRef<BottomSheet>(null);
-  const { present, dismiss } = useBottomSheetModal();
   const editProfileSheetRef = useRef<BottomSheet>(null);
 
-  // Initialize BottomSheetModal
-  useEffect(() => {
-    if (bottomSheetModalRef.current) {
-      present(bottomSheetModalRef.current);
-    }
-    return () => {
-      dismiss();
-    };
-  }, [present, dismiss]);
+  // Refresh user profile when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Refresh user profile when returning from subscription page
+      console.log('Profile screen focused - refreshing user profile...');
+      console.log('Current userProfile subscription:', userProfile?.subscription);
+      if (refetchUserProfile) {
+        refetchUserProfile().then(() => {
+          console.log('User profile refreshed successfully');
+          console.log('Updated userProfile subscription:', userProfile?.subscription);
+        }).catch((error) => {
+          console.error('Failed to refresh user profile:', error);
+        });
+      }
+    }, [refetchUserProfile, userProfile?.subscription])
+  );
 
   // Open/close helpers for edit profile bottom sheet
   const openEditProfile = () => {
@@ -269,6 +278,13 @@ export default function ProfileScreen() {
 
   // Logout
   const handleLogout = async () => {
+    try {
+      // Clear stored biometric credentials on logout
+      await AsyncStorage.removeItem('biometric_credentials');
+      console.log('Stored credentials cleared on logout');
+    } catch (error) {
+      console.error('Failed to clear stored credentials:', error);
+    }
     await signOut(auth);
   };
 
@@ -446,22 +462,22 @@ export default function ProfileScreen() {
               )}
             </View>
             
-            {userProfile.subscription?.plan === 'free' ? (
+            <View style={{ flexDirection: 'row', gap: 8 }}>
               <ModernButton
-                title="Upgrade to Premium"
-                onPress={() => setUpgradeDialog(true)}
-                variant="primary"
-                fullWidth
-                icon={<Star size={20} color="#fff" />}
+                title={userProfile.subscription?.plan === 'free' ? "Upgrade to Premium" : "Manage Subscription"}
+                onPress={() => router.push('/subscription')}
+                variant={userProfile.subscription?.plan === 'free' ? "primary" : "outline"}
+                style={{ flex: 1 }}
+                icon={userProfile.subscription?.plan === 'free' ? <Star size={20} color="#fff" /> : undefined}
               />
-            ) : (
               <ModernButton
-                title="Manage Subscription"
-                onPress={() => setManageSubscriptionOpen(true)}
-                variant="outline"
-                fullWidth
+                title="Refresh"
+                onPress={onRefresh}
+                variant="ghost"
+                style={{ minWidth: 80 }}
+                icon={<Ionicons name="refresh" size={18} color={colors.primary} />}
               />
-            )}
+            </View>
             
             {userProfile.subscription?.plan === 'free' && (
               <View style={{
@@ -710,6 +726,81 @@ export default function ProfileScreen() {
           </ModernCard>
         </Animated.View>
         
+        {/* Native Features Settings */}
+        <Animated.View entering={FadeInDown.delay(550)}>
+          <ModernCard style={{ marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{
+                backgroundColor: colors.tertiaryContainer,
+                borderRadius: 12,
+                padding: 8,
+                marginRight: 12,
+              }}>
+                <MaterialCommunityIcons name="cellphone-cog" size={24} color={colors.tertiary} />
+              </View>
+              <Text style={{ 
+                fontWeight: '700', 
+                fontSize: 20, 
+                color: colors.onSurface 
+              }}>
+                Native Features
+              </Text>
+            </View>
+            
+            <ModernButton
+              title="Biometric Authentication"
+              onPress={() => router.push('/settings-native')}
+              variant="outline"
+              fullWidth
+              style={{ marginBottom: 12 }}
+              icon={<MaterialCommunityIcons name="fingerprint" size={18} color={colors.primary} />}
+            />
+            
+            <ModernButton
+              title="Push Notifications"
+              onPress={() => router.push('/settings-native')}
+              variant="outline"
+              fullWidth
+              style={{ marginBottom: 12 }}
+              icon={<MaterialCommunityIcons name="bell" size={18} color={colors.primary} />}
+            />
+            
+            <ModernButton
+              title="Camera & Receipt Scanning"
+              onPress={() => router.push('/settings-native')}
+              variant="outline"
+              fullWidth
+              style={{ marginBottom: 12 }}
+              icon={<MaterialCommunityIcons name="camera" size={18} color={colors.primary} />}
+            />
+            
+            <ModernButton
+              title="Location Services"
+              onPress={() => router.push('/settings-native')}
+              variant="outline"
+              fullWidth
+              style={{ marginBottom: 12 }}
+              icon={<MaterialCommunityIcons name="map-marker" size={18} color={colors.primary} />}
+            />
+            
+            <ModernButton
+              title="Share Settings"
+              onPress={() => router.push('/settings-native')}
+              variant="outline"
+              fullWidth
+              style={{ marginBottom: 16 }}
+              icon={<MaterialCommunityIcons name="share" size={18} color={colors.primary} />}
+            />
+            
+            <Text style={{ 
+              color: colors.onSurfaceVariant, 
+              fontSize: 13 
+            }}>
+              Configure biometric authentication, notifications, camera, location, and sharing preferences.
+            </Text>
+          </ModernCard>
+        </Animated.View>
+        
         {/* Security Card */}
         <Animated.View entering={FadeInDown.delay(600)}>
           <ModernCard style={{ marginBottom: 20 }}>
@@ -884,7 +975,6 @@ export default function ProfileScreen() {
                   borderColor: colors.outline,
                   paddingHorizontal: 14,
                   paddingVertical: 12,
-                  fontSize: 17,
                 }}
                 inputStyle={{
                   fontSize: 17,
@@ -892,9 +982,6 @@ export default function ProfileScreen() {
                 }}
                 autoFocus
                 placeholder="Enter your name"
-                placeholderTextColor={colors.onSurfaceVariant}
-                returnKeyType="done"
-                blurOnSubmit
               />
 
               <Text

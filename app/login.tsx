@@ -7,9 +7,9 @@ import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { FacebookAuthProvider, GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword, signInWithPhoneNumber } from 'firebase/auth';
 import { Eye, EyeOff, Lock, Mail, MessageSquare, Phone } from 'lucide-react-native';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Snackbar, Text, useTheme } from 'react-native-paper';
+import { Snackbar, Text, useTheme, Button } from 'react-native-paper';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModernButton } from '../components/ui/ModernButton';
@@ -18,6 +18,7 @@ import { ModernInput } from '../components/ui/ModernInput';
 import { DesignSystem } from '../constants/DesignSystem';
 import { auth } from '../firebase/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import biometricAuth from '../lib/auth/BiometricAuth';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -39,6 +40,11 @@ export default function LoginScreen() {
   const { colors, dark } = useTheme();
   const insets = useSafeAreaInsets();
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Biometric authentication states
+  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
+  const [biometricType, setBiometricType] = useState<'fingerprint' | 'face' | 'both'>('fingerprint');
 
   // Debug function to reset onboarding
   const resetOnboarding = async () => {
@@ -48,6 +54,87 @@ export default function LoginScreen() {
       router.replace('/');
     } catch (error) {
       console.error('Error resetting onboarding:', error);
+    }
+  };
+
+  // Check biometric availability on component mount
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  const checkBiometricAvailability = async () => {
+    try {
+      const isSupported = await biometricAuth.isSupported();
+      setIsBiometricSupported(isSupported);
+      
+      if (isSupported) {
+        const settings = await biometricAuth.getSettings();
+        setIsBiometricEnabled(settings.enabled);
+        
+        const deviceType = await biometricAuth.getDeviceBiometricType();
+        setBiometricType(deviceType);
+      }
+    } catch (error) {
+      console.error('Error checking biometric availability:', error);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    try {
+      setLoading(true);
+      const result = await biometricAuth.authenticate('Login to ExpenseFlow');
+      
+      if (result.success) {
+        // Check if we have stored credentials for biometric login
+        const storedCredentials = await AsyncStorage.getItem('biometric_credentials');
+        
+        if (storedCredentials) {
+          // Use stored credentials to login
+          const { email, password } = JSON.parse(storedCredentials);
+          
+          try {
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            if (!userCredential.user.emailVerified) {
+              router.push('/verify-email');
+              return;
+            }
+            
+            setSnackbar({ 
+              visible: true, 
+              message: `Biometric authentication successful! Welcome back.`, 
+              color: 'green' 
+            });
+            
+            router.replace('/');
+          } catch (error: any) {
+            setSnackbar({ 
+              visible: true, 
+              message: 'Stored credentials are invalid. Please login with email/password first.', 
+              color: 'red' 
+            });
+          }
+        } else {
+          setSnackbar({ 
+            visible: true, 
+            message: 'No stored credentials found. Please login with email/password first to enable biometric login.', 
+            color: 'red' 
+          });
+        }
+      } else {
+        setSnackbar({ 
+          visible: true, 
+          message: result.error || 'Biometric authentication failed', 
+          color: 'red' 
+        });
+      }
+    } catch (error) {
+      setSnackbar({ 
+        visible: true, 
+        message: 'Biometric authentication error', 
+        color: 'red' 
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -110,6 +197,20 @@ export default function LoginScreen() {
         setLoading(false);
         return;
       }
+      
+      // Store credentials for biometric login if biometric is enabled
+      if (isBiometricEnabled) {
+        try {
+          await AsyncStorage.setItem('biometric_credentials', JSON.stringify({
+            email,
+            password
+          }));
+          console.log('Credentials stored for biometric login');
+        } catch (error) {
+          console.error('Failed to store credentials:', error);
+        }
+      }
+      
       router.replace('/');
     } catch (error: any) {
       setSnackbar({ visible: true, message: error.message || 'Please check your email and password and try again.', color: 'red' });
@@ -417,6 +518,18 @@ export default function LoginScreen() {
                    style={[styles.socialButton, { backgroundColor: '#1877F2' }]}
                    icon={<MaterialCommunityIcons name="facebook" size={20} color="#ffffff" />}
                  />
+ 
+                 {/* Biometric Login Option */}
+                 {isBiometricSupported && (
+                   <ModernButton
+                     title={`Continue with ${isBiometricEnabled ? 'Biometric' : 'Fingerprint'}`}
+                     onPress={handleBiometricLogin}
+                     loading={loading}
+                     fullWidth
+                     style={styles.socialButton}
+                     icon={<MaterialCommunityIcons name={isBiometricEnabled ? 'fingerprint' : 'fingerprint-off'} size={20} color={colors.onSurfaceVariant} />}
+                   />
+                 )}
  
                  {/* Bottom Link */}
                 

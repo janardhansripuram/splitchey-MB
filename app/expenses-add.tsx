@@ -5,13 +5,17 @@ import React, { useEffect, useState } from 'react';
 import { Image, Keyboard, ScrollView, TouchableOpacity, View, Platform } from 'react-native';
 import { ActivityIndicator, Divider, Modal, Portal, Snackbar, Switch, Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useLocalSearchParams } from 'expo-router';
 import { ModernButton } from '../components/ui/ModernButton';
 import { CategorySelectionModal } from '../components/CategorySelectionModal';
 import { EnhancedDatePicker } from '../components/ui/EnhancedDatePicker';
-import { SUPPORTED_CURRENCIES } from '../constants/types';
+import { HapticButton } from '../components/ui/HapticButton';
+import { SUPPORTED_CURRENCIES, CurrencyCode, SettlementStatus } from '../constants/types';
 import { getCategoryIcon, getCategoryLabel } from '../constants/categories';
 import { addExpense, createSplitExpense, getFriends, getGroupsForUser } from '../firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
+import { useOffline } from '../hooks/useOffline';
+import { offlineManager } from '../lib/offline/OfflineManager';
 
 const recurrenceOptions = [
   { label: 'None', value: 'none' },
@@ -31,6 +35,13 @@ export default function AddExpensesSheet({ visible, onClose, groupId: initialGro
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { authUser, userProfile } = useAuth();
+  const { isOnline } = useOffline();
+  const params = useLocalSearchParams<{
+    amount?: string;
+    description?: string;
+    category?: string;
+    fromCamera?: string;
+  }>();
 
   // Form state
   const [amount, setAmount] = useState('');
@@ -60,6 +71,7 @@ export default function AddExpensesSheet({ visible, onClose, groupId: initialGro
   const [ocrLoading, setOcrLoading] = useState(false);
   const [splitError, setSplitError] = useState('');
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
+  const [isLoadingData, setIsLoadingData] = useState(false);
 
   // Error states
   const [amountError, setAmountError] = useState('');
@@ -69,12 +81,62 @@ export default function AddExpensesSheet({ visible, onClose, groupId: initialGro
   const [dateError, setDateError] = useState('');
   const [formError, setFormError] = useState('');
 
+  // Handle pre-filled data from camera
+  useEffect(() => {
+    if (params.fromCamera === 'true') {
+      if (params.amount) setAmount(params.amount);
+      if (params.description) setDescription(params.description);
+      if (params.category) setCategory(params.category);
+    }
+  }, [params]);
+
   // Fetch groups and friends
   useEffect(() => {
     if (!authUser) return;
-    getGroupsForUser(authUser.uid).then(setGroups);
-    getFriends(authUser.uid).then(setFriends);
-  }, [authUser]);
+    
+      const fetchData = async () => {
+    setIsLoadingData(true);
+    try {
+      if (isOnline) {
+        // Fetch from Firebase when online with timeout
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout')), 10000)
+        );
+        
+        const dataPromise = Promise.all([
+          getGroupsForUser(authUser.uid),
+          getFriends(authUser.uid)
+        ]);
+        
+        const result = await Promise.race([dataPromise, timeoutPromise]) as [any[], any[]];
+        const [groupsData, friendsData] = result;
+        setGroups(groupsData);
+        setFriends(friendsData);
+        
+        // Cache the data for offline use
+        await offlineManager.cacheUserData('groups', groupsData);
+        await offlineManager.cacheUserData('friends', friendsData);
+      } else {
+        // Use cached data when offline
+        const [cachedGroups, cachedFriends] = await Promise.all([
+          offlineManager.getCachedUserData('groups'),
+          offlineManager.getCachedUserData('friends')
+        ]);
+        setGroups(cachedGroups || []);
+        setFriends(cachedFriends || []);
+      }
+    } catch (error) {
+      console.error('[AddExpense] Failed to fetch groups/friends:', error);
+      // Set empty arrays to prevent hanging
+      setGroups([]);
+      setFriends([]);
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+    
+    fetchData();
+  }, [authUser, isOnline]);
 
   // Split participants
   useEffect(() => {
@@ -188,14 +250,14 @@ export default function AddExpensesSheet({ visible, onClose, groupId: initialGro
             email: p.email || '',
             amountOwed: parseFloat(amountOwed.toFixed(2)), // Ensure 2 decimal places
             percentage: parseFloat(percentage.toFixed(2)),
-            settlementStatus: 'unsettled', // Default status
+            settlementStatus: 'unsettled' as SettlementStatus, // Default status
           };
         });
 
         const splitExpenseData = {
           originalExpenseId: 'temp-id-' + Date.now(), // Will be replaced by actual expense ID
           originalExpenseDescription: description,
-          currency: currency,
+          currency: currency as CurrencyCode,
           splitMethod: splitMethod,
           totalAmount: totalAmountForSplit,
           paidBy: paidBy,
@@ -216,8 +278,33 @@ export default function AddExpensesSheet({ visible, onClose, groupId: initialGro
         setSnackbar({ visible: true, message: 'Split expense added!' });
 
       } else {
-        expenseId = await addExpense(authUser.uid, expenseData, userProfile);
-        setSnackbar({ visible: true, message: 'Expense added!' });
+        if (isOnline) {
+          expenseId = await addExpense(authUser.uid, expenseData, userProfile);
+          setSnackbar({ visible: true, message: 'Expense added!' });
+        } else {
+          // Save offline
+          const offlineExpense = {
+            userId: authUser.uid,
+            paidById: authUser.uid,
+            paidByName: userProfile?.displayName || 'You',
+            description,
+            amount: parseFloat(amount),
+            currency,
+            category,
+            date,
+            notes,
+            createdAt: new Date().toISOString(),
+            groupId: selectedGroup === 'personal' ? undefined : selectedGroup,
+            groupName: selectedGroup === 'personal' ? undefined : groups.find(g => g.id === selectedGroup)?.name,
+            isRecurring: recurrence !== 'none',
+            recurrence,
+            recurrenceEndDate: recurrence !== 'none' && recurrenceEndDate ? recurrenceEndDate : undefined,
+            tags: tags ? tags.split(',').map(tag => tag.trim()) : undefined,
+          };
+          
+          await offlineManager.saveExpenseOffline(offlineExpense);
+          setSnackbar({ visible: true, message: 'Expense saved offline!' });
+        }
       }
       onClose();
     } catch (e: any) {
@@ -344,6 +431,14 @@ const handleOcrScan = async () => {
           <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.primary, marginBottom: 16, textAlign: 'center' }}>
             Add New Expense
           </Text>
+          {isLoadingData && (
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={{ color: colors.onSurfaceVariant, fontSize: 12, marginTop: 4 }}>
+                {isOnline ? 'Loading data...' : 'Loading cached data...'}
+              </Text>
+            </View>
+          )}
           <Divider style={{ marginBottom: 20 }} />
 
           {/* OCR Scanner */}

@@ -5,10 +5,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Dimensions, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Avatar, Button, Card, Chip, Dialog, Divider, IconButton, Menu, Portal, Surface, Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getFriends, getSplitExpensesForUser, sendDebtReminder, settleDebtWithWallet, requestSettlementApproval, approveSettlement, rejectSettlement } from '../firebase/firestore';
+import { getFriends, getSplitExpensesForUser, sendDebtReminder, settleDebtWithWallet, requestSettlementApproval, approveSettlement, rejectSettlement , getUserProfile } from '../firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { CurrencyCode, Friend, SplitExpense, SplitParticipant, UserProfile } from '../constants/types';
-import { getUserProfile } from '../firebase/firestore';
 
 const { width: screenWidth } = Dimensions.get('window');
 

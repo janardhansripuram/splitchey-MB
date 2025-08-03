@@ -9,8 +9,14 @@ import { ActivityIndicator, Button, Chip, Dialog, Divider, FAB, IconButton, Menu
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModernButton } from '../../components/ui/ModernButton';
 import { ModernCard } from '../../components/ui/ModernCard';
+
+
+import { HapticButton } from '../../components/ui/HapticButton';
+import { SlideInAnimation } from '../../components/ui/MobileAnimations';
 import { deleteExpense, getExpensesByUser, getGroupsForUser, getSplitExpensesForUser, updateExpense } from '../../firebase/firestore';
 import { useAuth } from '../../hooks/useAuth';
+import { useOffline } from '../../hooks/useOffline';
+import { offlineManager } from '../../lib/offline/OfflineManager';
 import AddExpensesSheet from '../expenses-add';
 import ExpensesEditModal from '../expenses-edit-modal';
 
@@ -18,7 +24,35 @@ const BOTTOM_SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.68);
 
 export default function ExpensesScreen() {
   const { authUser, loading } = useAuth();
+  const { isOnline, triggerSync } = useOffline();
   const [expenses, setExpenses] = useState<any[]>([]);
+
+  // Debug function to add test offline expense
+  const addTestOfflineExpense = async () => {
+    if (!authUser) return;
+    
+    const testExpense = {
+      userId: authUser.uid,
+      paidById: authUser.uid,
+      paidByName: 'Test User',
+      description: 'Test Offline Expense',
+      amount: 50.00,
+      currency: 'MYR',
+      category: 'Food',
+      date: new Date().toISOString().split('T')[0],
+      notes: 'This is a test offline expense',
+      createdAt: new Date().toISOString(),
+    };
+    
+    try {
+      const id = await offlineManager.saveExpenseOffline(testExpense);
+      console.log('[Expenses] Test offline expense added with ID:', id);
+      fetchData(); // Refresh the list
+    } catch (error) {
+      console.error('[Expenses] Failed to add test offline expense:', error);
+    }
+  };
+
   const [groups, setGroups] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; expenseId?: string }>({ open: false });
@@ -101,13 +135,51 @@ export default function ExpensesScreen() {
     if (!authUser) return;
     setIsLoading(true);
     setFetchError(null);
+    
     try {
-      console.log('[Expenses] Fetching for user:', authUser.uid);
-      const [expensesList, splitExpensesList, groupsList] = await Promise.all([
-        getExpensesByUser(authUser.uid),
-        getSplitExpensesForUser(authUser.uid),
-        getGroupsForUser(authUser.uid),
-      ]);
+      console.log('[Expenses] Fetching for user:', authUser.uid, 'Online:', isOnline);
+      
+      // Fetch online data if available
+      let expensesList: any[] = [];
+      let splitExpensesList: any[] = [];
+      let groupsList: any[] = [];
+      
+      if (isOnline) {
+        try {
+          [expensesList, splitExpensesList, groupsList] = await Promise.all([
+            getExpensesByUser(authUser.uid),
+            getSplitExpensesForUser(authUser.uid),
+            getGroupsForUser(authUser.uid),
+          ]);
+          console.log('[Expenses] Online data fetched:', expensesList.length, 'expenses');
+        } catch (error) {
+          console.error('[Expenses] Online fetch failed:', error);
+        }
+      } else {
+        console.log('[Expenses] Offline mode - skipping online fetch');
+      }
+      
+      // Fetch offline data
+      const offlineExpensesList = await offlineManager.getOfflineExpenses(authUser.uid);
+      console.log('[Expenses] Offline data fetched:', offlineExpensesList.length, 'expenses');
+      
+      // Get cached expenses for offline viewing
+      let cachedExpensesList: any[] = [];
+      if (!isOnline) {
+        cachedExpensesList = await offlineManager.getCachedExpenses(authUser.uid);
+        console.log('[Expenses] Cached expenses fetched:', cachedExpensesList.length, 'expenses');
+      }
+      
+      // Cache online expenses for offline viewing
+      if (isOnline && expensesList.length > 0) {
+        try {
+          await offlineManager.cacheExpensesForOffline(authUser.uid, expensesList);
+          console.log('[Expenses] Cached', expensesList.length, 'expenses for offline viewing');
+        } catch (error) {
+          console.error('[Expenses] Failed to cache expenses for offline:', error);
+        }
+      }
+      
       const expenseIds = new Set(expensesList.map((e: any) => e.id));
       const splitExpenses = (splitExpensesList || []).map((split: any) => {
         let dateStr = '';
@@ -130,15 +202,33 @@ export default function ExpensesScreen() {
           originalExpenseId: split.originalExpenseId,
         };
       }).filter(split => !expenseIds.has(split.originalExpenseId));
-      const allExpenses = [...expensesList, ...splitExpenses];
+      
+      // Merge offline expenses with online expenses
+      const offlineExpensesWithFlag = offlineExpensesList.map(expense => ({
+        ...expense,
+        isOffline: true,
+      }));
+      
+      // Use cached expenses when offline and no online data
+      const expensesToShow = isOnline ? expensesList : (expensesList.length > 0 ? expensesList : cachedExpensesList);
+      
+      const allExpenses = [...expensesToShow, ...splitExpenses, ...offlineExpensesWithFlag];
+      console.log('[Expenses] Final expenses list:', allExpenses.length, 'total expenses');
+      console.log('[Expenses] Breakdown:', {
+        online: expensesList.length,
+        cached: cachedExpensesList.length,
+        split: splitExpenses.length,
+        offline: offlineExpensesWithFlag.length
+      });
       setExpenses(allExpenses);
       setGroups(groupsList);
+      
     } catch (e) {
       setFetchError('Failed to fetch expenses.');
       console.error('[Expenses] Fetch error:', e);
     }
     setIsLoading(false);
-  }, [authUser]);
+  }, [authUser, isOnline]);
 
   useEffect(() => {
     if (!loading && authUser) {
@@ -174,46 +264,67 @@ export default function ExpensesScreen() {
   // In renderExpense, pass the entire expense object:
   const renderExpense = ({ item }: { item: any }) => {
     const group = item.groupId ? groups.find((g: any) => g.id === item.groupId) : null;
+    const isOfflineExpense = item.id?.startsWith('offline_');
+    
     return (
-      <ModernCard
-        style={{
-          backgroundColor: colors.elevation.level1,
-          borderColor: colors.outlineVariant || colors.outline,
-          shadowColor: colors.shadow || '#000',
-          borderRadius: 16, // Apply directly here
-          marginBottom: 16, // Apply directly here
-          elevation: 4, // Apply directly here
-          shadowOpacity: 0.08, // Apply directly here
-          shadowRadius: 8, // Apply directly here
-          borderWidth: 1, // Apply directly here
-          padding: 16, // Apply directly here
-        }}
-      >
+      <SlideInAnimation direction="up" delay={100}>
+        <ModernCard
+            style={{
+              backgroundColor: colors.elevation.level1,
+              borderColor: isOfflineExpense ? colors.warning : colors.outlineVariant || colors.outline,
+              shadowColor: colors.shadow || '#000',
+              borderRadius: 16,
+              marginBottom: 16,
+              elevation: 4,
+              shadowOpacity: 0.08,
+              shadowRadius: 8,
+              borderWidth: 1,
+              padding: 16,
+            }}
+          >
         <View style={styles.expenseHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.expenseTitle, { color: colors.onSurface }]}>
-              {item.description || 'Expense'}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={[styles.expenseTitle, { color: colors.onSurface }]}>
+                {item.description || 'Expense'}
+              </Text>
+              {isOfflineExpense && (
+                <MaterialCommunityIcons
+                  name="cloud-upload"
+                  size={16}
+                  color={colors.warning}
+                  style={{ marginLeft: 8 }}
+                />
+              )}
+            </View>
             <Text style={[styles.expenseCategory, { color: colors.primary }]}>
               {item.category || 'Uncategorized'}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <IconButton
-              icon="pencil"
-              size={20}
+            <HapticButton
+              hapticType="light"
               onPress={() => {
                 setEditExpense(item);
                 setEditSheetOpen(true);
               }}
-              iconColor={colors.primary}
-            />
-            <IconButton
-              icon="delete"
-              size={20}
+            >
+              <IconButton
+                icon="pencil"
+                size={20}
+                iconColor={colors.primary}
+              />
+            </HapticButton>
+            <HapticButton
+              hapticType="medium"
               onPress={() => setDeleteDialog({ open: true, expenseId: item.id })}
-              iconColor={colors.error}
-            />
+            >
+              <IconButton
+                icon="delete"
+                size={20}
+                iconColor={colors.error}
+              />
+            </HapticButton>
           </View>
         </View>
         <Divider style={{ marginVertical: 6, backgroundColor: colors.outlineVariant || colors.outline }} />
@@ -277,7 +388,8 @@ export default function ExpensesScreen() {
             <Text style={[styles.notes, { color: colors.onSurfaceVariant }]}>{item.notes}</Text>
           </View>
         )}
-      </ModernCard>
+          </ModernCard>
+      </SlideInAnimation>
     );
   };
 
@@ -302,16 +414,29 @@ export default function ExpensesScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Debug button for testing offline functionality */}
+        {!isOnline && (
+          <ModernButton
+            onPress={addTestOfflineExpense}
+            title="Add Test Offline Expense"
+            style={{ marginHorizontal: 16, marginBottom: 8 }}
+          />
+        )}
         <View style={styles.headerContainer}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
               <Text variant="headlineLarge" style={[styles.headerTitle, { color: colors.onBackground }]}>My Expenses</Text>
               <Text style={[styles.headerSubtitle, { color: colors.onSurfaceVariant }]}>View and manage your recorded expenses.</Text>
             </View>
-            <IconButton icon="filter-variant" size={28} onPress={() => {
-              setFilterSheetOpen(true);
-              if (bottomSheetRef.current) bottomSheetRef.current.expand();
-            }} style={{ marginLeft: 8 }} iconColor={colors.primary} />
+            <HapticButton
+              hapticType="light"
+              onPress={() => {
+                setFilterSheetOpen(true);
+                if (bottomSheetRef.current) bottomSheetRef.current.expand();
+              }}
+            >
+              <IconButton icon="filter-variant" size={28} iconColor={colors.primary} />
+            </HapticButton>
           </View>
         </View>
         {fetchError && <Text style={{ color: colors.error, textAlign: 'center', marginVertical: 8 }}>{fetchError}</Text>}
@@ -560,6 +685,18 @@ export default function ExpensesScreen() {
         visible
       />
 
+      {/* Camera FAB */}
+      <FAB
+        icon="camera"
+        style={[
+          styles.cameraFab,
+          { bottom: 80 + insets.bottom, backgroundColor: colors.secondary }
+        ]}
+        color={colors.onSecondary}
+        onPress={() => router.push('/camera-screen')}
+        visible
+      />
+
       {/* Add Expense Bottom Sheet */}
       <AddExpensesSheet
         visible={addSheetOpen}
@@ -698,6 +835,21 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     width: 64,
     height: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraFab: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 10,
+    backgroundColor: undefined, // Use theme color in component
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    borderRadius: 32,
+    width: 56,
+    height: 56,
     justifyContent: 'center',
     alignItems: 'center',
   },
