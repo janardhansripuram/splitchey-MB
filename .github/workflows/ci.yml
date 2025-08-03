@@ -21,8 +21,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Install Expo CLI
-        run: npm install -g @expo/cli
+      - name: Install EAS CLI
+        run: npm install -g @expo/eas-cli
       
       - name: Run linting
         run: npm run lint
@@ -46,21 +46,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Install Expo CLI
-        run: npm install -g @expo/cli
+      - name: Install EAS CLI
+        run: npm install -g @expo/eas-cli
       
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '11'
-      
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Login to Expo
+        run: |
+          echo ${{ secrets.EXPO_TOKEN }} | eas login --non-interactive
       
       - name: Build Android APK
         run: |
-          npx expo build:android --non-interactive
+          eas build --platform android --non-interactive --local
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -84,12 +79,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Install Expo CLI
-        run: npm install -g @expo/cli
+      - name: Install EAS CLI
+        run: npm install -g @expo/eas-cli
+      
+      - name: Login to Expo
+        run: |
+          echo ${{ secrets.EXPO_TOKEN }} | eas login --non-interactive
       
       - name: Build iOS app
         run: |
-          npx expo build:ios --non-interactive
+          eas build --platform ios --non-interactive --local
       
       - name: Upload iOS build
         uses: actions/upload-artifact@v4
@@ -118,7 +117,6 @@ jobs:
       
       - name: Build web app
         run: |
-          npx expo build:web
           npx expo export:web
       
       - name: Upload web build
