@@ -112,43 +112,14 @@ workflows:
     artifacts:
       - android/app/build/outputs/**/apk/**/*.apk
       - android/app/build/outputs/**/mapping.txt
-    publishing:
-      google_play:
-        track: internal
-        submit_as_draft: true
-      email:
-        recipients:
-          - your-email@splitchey.com
-      slack:
-        channel: "#builds"
+    # publishing:
+    #   google_play:
+    #     track: internal
+    #     submit_as_draft: true
+    #   email:
+    #     recipients:
+    #       - your-email@splitchey.com
+    #   slack:
+    #     channel: "#builds"
 
-  web-workflow:
-    name: Web Workflow
-    environment:
-      node: latest
-      vars:
-        FIREBASE_SERVICE_ACCOUNT: $CM_FIREBASE_SERVICE_ACCOUNT
-    scripts:
-      - name: Install dependencies
-        script: |
-          npm install
-          npx expo install
-      - name: Build web app
-        script: |
-          # Build for web using Expo
-          npx expo build:web
-          
-          # Create production build
-          npx expo export:web
-    artifacts:
-      - web-build/**/*
-    publishing:
-      firebase_app_distribution:
-        app_id: $CM_FIREBASE_APP_ID
-        service_credentials_file: $FIREBASE_SERVICE_ACCOUNT
-        groups: testers
-      email:
-        recipients:
-          - your-email@splitchey.com
-      slack:
-        channel: "#builds" 
+  
