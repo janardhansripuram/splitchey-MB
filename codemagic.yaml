@@ -1,0 +1,167 @@
+workflows:
+  ios-workflow:
+    name: iOS Workflow
+    environment:
+      xcode: latest
+      cocoapods: default
+      vars:
+        XCODE_PROJECT: "ios/splitchey.xcworkspace"
+        XCODE_SCHEME: "splitchey"
+        BUNDLE_ID: "com.splitchey.app"
+        CERTIFICATE_PASSWORD: $CM_CERTIFICATE_PASSWORD
+        KEYCHAIN_PASSWORD: $CM_KEYCHAIN_PASSWORD
+        APP_STORE_CONNECT_ISSUER_ID: $CM_APP_STORE_CONNECT_ISSUER_ID
+        APP_STORE_CONNECT_API_KEY_ID: $CM_APP_STORE_CONNECT_API_KEY_ID
+        APP_STORE_CONNECT_API_KEY: $CM_APP_STORE_CONNECT_API_KEY
+        FIREBASE_SERVICE_ACCOUNT: $CM_FIREBASE_SERVICE_ACCOUNT
+      node: latest
+      flutter: stable
+    scripts:
+      - name: Set up code signing settings
+        script: |
+          keychain_name="codemagic.keychain"
+          keychain_password="$KEYCHAIN_PASSWORD"
+          
+          # Create keychain
+          security create-keychain -p "$keychain_password" "$keychain_name"
+          security list-keychains -s "$keychain_name"
+          security default-keychain -s "$keychain_name"
+          security unlock-keychain -p "$keychain_password" "$keychain_name"
+          security set-keychain-settings -t 3600 -l ~/Library/Keychains/"$keychain_name"
+          
+          # Import certificates
+          security import $CM_CERTIFICATE_PATH -k "$keychain_name" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import $CM_PROVISIONING_PROFILE_PATH -k "$keychain_name" -T /usr/bin/codesign
+          
+          # Set partition list
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain_name"
+          
+          # Add provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $CM_PROVISIONING_PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+          
+          # Set up code signing identity
+          /usr/libexec/PlistBuddy -c "Set :objects:$CM_DEVELOPMENT_TEAM:buildSettings:CODE_SIGN_IDENTITY iPhone Developer" $XCODE_PROJECT
+          /usr/libexec/PlistBuddy -c "Set :objects:$CM_DEVELOPMENT_TEAM:buildSettings:DEVELOPMENT_TEAM $CM_DEVELOPMENT_TEAM" $XCODE_PROJECT
+          /usr/libexec/PlistBuddy -c "Set :objects:$CM_DEVELOPMENT_TEAM:buildSettings:PROVISIONING_PROFILE_SPECIFIER $CM_PROVISIONING_PROFILE_SPECIFIER" $XCODE_PROJECT
+      - name: Install dependencies
+        script: |
+          npm install
+          npx expo install
+      - name: Build iOS app
+        script: |
+          # Build for iOS
+          npx expo build:ios --non-interactive
+          
+          # Archive the app
+          xcodebuild -workspace $XCODE_PROJECT \
+            -scheme $XCODE_SCHEME \
+            -configuration Release \
+            -archivePath build/splitchey.xcarchive \
+            archive
+          
+          # Export IPA
+          xcodebuild -exportArchive \
+            -archivePath build/splitchey.xcarchive \
+            -exportPath build/ios \
+            -exportOptionsPlist exportOptions.plist
+    artifacts:
+      - build/ios/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_API_KEY
+        key_id: $APP_STORE_CONNECT_API_KEY_ID
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+      email:
+        recipients:
+          - your-email@splitchey.com
+      slack:
+        channel: "#builds"
+        notify_on_build_start: true
+        notify_on_build_success: true
+        notify_on_build_fail: true
+
+  android-workflow:
+    name: Android Workflow
+    environment:
+      android_signing:
+        - keystore_reference
+      vars:
+        PACKAGE_NAME: "com.splitchey.app"
+        FIREBASE_SERVICE_ACCOUNT: $CM_FIREBASE_SERVICE_ACCOUNT
+      node: latest
+      flutter: stable
+    scripts:
+      - name: Set up Android signing
+        script: |
+          echo $CM_KEYSTORE_PATH | base64 --decode > /tmp/keystore.jks
+          echo "storeFile=/tmp/keystore.jks" >> key.properties
+          echo "storePassword=$CM_STORE_PASSWORD" >> key.properties
+          echo "keyAlias=$CM_KEY_ALIAS" >> key.properties
+          echo "keyPassword=$CM_KEY_PASSWORD" >> key.properties
+      - name: Install dependencies
+        script: |
+          npm install
+          npx expo install
+      - name: Build Android app
+        script: |
+          # Build for Android
+          npx expo build:android --non-interactive
+          
+          # Build APK
+          cd android
+          ./gradlew assembleRelease
+          cd ..
+    artifacts:
+      - build/app/outputs/**/flutter-apk/**/*.apk
+      - build/app/outputs/**/mapping.txt
+      - flutter_drive.log
+    publishing:
+      google_play:
+        track: internal
+        submit_as_draft: true
+      email:
+        recipients:
+          - your-email@splitchey.com
+      slack:
+        channel: "#builds"
+        notify_on_build_start: true
+        notify_on_build_success: true
+        notify_on_build_fail: true
+
+  web-workflow:
+    name: Web Workflow
+    environment:
+      node: latest
+      vars:
+        FIREBASE_SERVICE_ACCOUNT: $CM_FIREBASE_SERVICE_ACCOUNT
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install
+          npx expo install
+      - name: Build web app
+        script: |
+          # Build for web
+          npx expo build:web
+          
+          # Create production build
+          npx expo export:web
+    artifacts:
+      - web-build/**/*
+    publishing:
+      firebase_app_distribution:
+        app_id: $CM_FIREBASE_APP_ID
+        service_credentials_file: $FIREBASE_SERVICE_ACCOUNT
+        groups: testers
+      email:
+        recipients:
+          - your-email@splitchey.com
+      slack:
+        channel: "#builds"
+        notify_on_build_start: true
+        notify_on_build_success: true
+        notify_on_build_fail: true 

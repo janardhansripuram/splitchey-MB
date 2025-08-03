@@ -47,6 +47,41 @@ You can start developing by editing the files inside the **app** directory. This
 - **Share Functionality**: Share expenses via messaging apps
 - **Payment Gateway**: Stripe and PayPal integration
 
+## CI/CD Automation
+
+This project uses **Codemagic** for automated builds and deployments.
+
+### Quick Build Commands
+
+```bash
+# Build iOS app
+npm run build:ios
+
+# Build Android app
+npm run build:android
+
+# Build web app
+npm run build:web
+
+# Clean build artifacts
+npm run build:clean
+
+# Run tests
+npm test
+
+# Run linting
+npm run lint:check
+```
+
+### Automated Workflows
+
+- **iOS Build**: Automatic iOS app builds with TestFlight deployment
+- **Android Build**: Automatic Android app builds with Google Play deployment
+- **Web Build**: Automatic web app builds with Firebase hosting
+- **Quality Checks**: Automated testing and linting
+
+For detailed setup instructions, see [CODEMAGIC_SETUP.md](./CODEMAGIC_SETUP.md).
+
 ## App Branding
 
 **Note**: The app currently uses default Expo icons. To complete the SplitChey branding, update the following files in `assets/images/`:

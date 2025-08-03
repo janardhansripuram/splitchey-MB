@@ -9,7 +9,13 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "dev": "EXPO_NO_TELEMETRY=1 expo start"
+    "dev": "EXPO_NO_TELEMETRY=1 expo start",
+    "build:ios": "./scripts/build.sh ios",
+    "build:android": "./scripts/build.sh android",
+    "build:web": "./scripts/build.sh web",
+    "build:clean": "./scripts/build.sh clean",
+    "test": "./scripts/build.sh test",
+    "lint:check": "./scripts/build.sh lint"
   },
   "dependencies": {
     "@expo/metro-config": "^0.20.17",
