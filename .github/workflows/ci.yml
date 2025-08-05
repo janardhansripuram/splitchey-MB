@@ -21,9 +21,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Install EAS CLI
-        run: npm install -g @expo/eas-cli
-      
       - name: Run linting
         run: npm run lint
       
@@ -46,16 +43,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Install EAS CLI
-        run: npm install -g @expo/eas-cli
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '11'
       
-      - name: Login to Expo
-        run: |
-          echo ${{ secrets.EXPO_TOKEN }} | eas login --non-interactive
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
       
       - name: Build Android APK
         run: |
-          eas build --platform android --non-interactive --local
+          cd android
+          ./gradlew assembleRelease
       
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -79,22 +79,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Install EAS CLI
-        run: npm install -g @expo/eas-cli
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
       
-      - name: Login to Expo
+      - name: Install CocoaPods
         run: |
-          echo ${{ secrets.EXPO_TOKEN }} | eas login --non-interactive
+          sudo gem install cocoapods
+          cd ios && pod install
       
       - name: Build iOS app
         run: |
-          eas build --platform ios --non-interactive --local
+          cd ios
+          xcodebuild -workspace SplitChey.xcworkspace -scheme SplitChey -configuration Release -destination generic/platform=iOS -archivePath SplitChey.xcarchive archive
+          xcodebuild -exportArchive -archivePath SplitChey.xcarchive -exportOptionsPlist ../exportOptions.plist -exportPath ./build
       
       - name: Upload iOS build
         uses: actions/upload-artifact@v4
         with:
           name: splitchey-ios
-          path: build/ios/*.ipa
+          path: ios/build/*.ipa
 
   build-web:
     needs: test

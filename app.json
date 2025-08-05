@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SplitChey",
+    "name": "SplitChey - Expense Tracker",
     "slug": "splitchey",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,14 +9,18 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.splitchey.app",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.splitchey.app",
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",

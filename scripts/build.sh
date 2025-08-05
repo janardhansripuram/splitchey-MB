@@ -66,8 +66,30 @@ build_ios() {
     # Install dependencies
     npm install
     
-    # Build iOS
-    npx expo build:ios --non-interactive
+    # Check if iOS folder exists
+    if [ ! -d "ios" ]; then
+        echo "❌ iOS folder not found. Run 'npx expo run:ios' first to generate iOS folder."
+        exit 1
+    fi
+    
+    # Install CocoaPods
+    cd ios && pod install && cd ..
+    
+    # Build iOS using Xcode
+    cd ios
+    xcodebuild -workspace SplitChey.xcworkspace \
+        -scheme SplitChey \
+        -configuration Release \
+        -destination generic/platform=iOS \
+        -archivePath SplitChey.xcarchive \
+        archive
+    
+    # Export IPA
+    xcodebuild -exportArchive \
+        -archivePath SplitChey.xcarchive \
+        -exportPath ./build \
+        -exportOptionsPlist ../exportOptions.plist
+    cd ..
     
     echo "✅ iOS build completed"
 }
@@ -79,10 +101,19 @@ build_android() {
     # Install dependencies
     npm install
     
-    # Build Android
-    npx expo build:android --non-interactive
+    # Check if Android folder exists
+    if [ ! -d "android" ]; then
+        echo "❌ Android folder not found. Run 'npx expo run:android' first to generate Android folder."
+        exit 1
+    fi
+    
+    # Build Android using Gradle
+    cd android
+    ./gradlew assembleRelease
+    cd ..
     
     echo "✅ Android build completed"
+    echo "📦 APK location: android/app/build/outputs/apk/release/"
 }
 
 # Function to build web
@@ -93,9 +124,10 @@ build_web() {
     npm install
     
     # Build web
-    npx expo build:web
+    npx expo export:web
     
     echo "✅ Web build completed"
+    echo "📦 Web build location: web-build/"
 }
 
 # Main script logic

@@ -5,8 +5,8 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        XCODE_PROJECT: "ios/splitchey.xcworkspace"
-        XCODE_SCHEME: "splitchey"
+        XCODE_PROJECT: "ios/SplitChey.xcworkspace"
+        XCODE_SCHEME: "SplitChey"
         BUNDLE_ID: "com.splitchey.app"
         CERTIFICATE_PASSWORD: $CM_CERTIFICATE_PASSWORD
         KEYCHAIN_PASSWORD: $CM_KEYCHAIN_PASSWORD
@@ -46,26 +46,27 @@ workflows:
       - name: Install dependencies
         script: |
           npm install
-          npx expo install
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install && cd ..
       - name: Build iOS app
         script: |
-          # Build for iOS using Expo
-          npx expo build:ios --non-interactive
-          
           # Archive the app
-          xcodebuild -workspace $XCODE_PROJECT \
-            -scheme $XCODE_SCHEME \
+          cd ios
+          xcodebuild -workspace SplitChey.xcworkspace \
+            -scheme SplitChey \
             -configuration Release \
-            -archivePath build/splitchey.xcarchive \
+            -archivePath SplitChey.xcarchive \
             archive
           
           # Export IPA
           xcodebuild -exportArchive \
-            -archivePath build/splitchey.xcarchive \
-            -exportPath build/ios \
-            -exportOptionsPlist exportOptions.plist
+            -archivePath SplitChey.xcarchive \
+            -exportPath ./build \
+            -exportOptionsPlist ../exportOptions.plist
+          cd ..
     artifacts:
-      - build/ios/*.ipa
+      - ios/build/*.ipa
       - /tmp/xcodebuild_logs/*.log
     publishing:
       app_store_connect:
@@ -99,12 +100,8 @@ workflows:
       - name: Install dependencies
         script: |
           npm install
-          npx expo install
       - name: Build Android app
         script: |
-          # Build for Android using Expo
-          npx expo build:android --non-interactive
-          
           # Build APK using Gradle
           cd android
           ./gradlew assembleRelease
