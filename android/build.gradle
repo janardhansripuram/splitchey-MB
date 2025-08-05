@@ -31,6 +31,18 @@ allprojects {
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
   }
+  
+  // Handle Android Support vs AndroidX conflicts
+  configurations.all {
+    resolutionStrategy {
+      force 'androidx.core:core:1.9.0'
+      force 'androidx.annotation:annotation:1.5.0'
+      force 'androidx.collection:collection:1.2.0'
+      force 'androidx.lifecycle:lifecycle-common:2.6.1'
+      force 'androidx.arch.core:core-common:2.2.0'
+      force 'androidx.versionedparcelable:versionedparcelable:1.1.1'
+    }
+  }
 }
 
 apply plugin: "expo-root-project"

@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-payments/android/build.gradle b/node_modules/react-native-payments/android/build.gradle
-index 0d066bd..5c37d3b 100644
+index 0d066bd..cf20e4f 100644
 --- a/node_modules/react-native-payments/android/build.gradle
 +++ b/node_modules/react-native-payments/android/build.gradle
 @@ -1,12 +1,12 @@
@@ -12,9 +12,18 @@ index 0d066bd..5c37d3b 100644
 +    buildToolsVersion "35.0.0"
  
      defaultConfig {
-         minSdkVersion 21
+-        minSdkVersion 21
 -        targetSdkVersion 28
++        minSdkVersion 24
 +        targetSdkVersion 35
          versionCode 1
          versionName "1.0"
          ndk {
+@@ -23,5 +23,6 @@ dependencies {
+     implementation 'com.google.android.gms:play-services-base:17.0.0'
+     implementation 'com.google.android.gms:play-services-identity:17.0.0'
+     implementation 'com.google.android.gms:play-services-wallet:17.0.0'
+-    implementation 'com.android.support:support-v4:23.0.1'
++    // Exclude Android Support library to avoid conflicts with AndroidX
++    // implementation 'com.android.support:support-v4:23.0.1'
+ }
