@@ -15,7 +15,8 @@
     "build:web": "./scripts/build.sh web",
     "build:clean": "./scripts/build.sh clean",
     "test": "./scripts/build.sh test",
-    "lint:check": "./scripts/build.sh lint"
+    "lint:check": "./scripts/build.sh lint",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo/metro-config": "^0.20.17",
@@ -80,6 +81,7 @@
     "@types/react": "~19.0.10",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",
+    "patch-package": "^8.0.0",
     "typescript": "~5.8.3"
   },
   "private": true
